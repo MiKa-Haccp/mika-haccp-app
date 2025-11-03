@@ -1,7 +1,7 @@
 // src/app/frischetheke/page.tsx
 "use client";
 import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabaseClient"; // oder "@/lib/..." wenn Alias gesetzt
+import { supabase } from "../../../lib/supabaseClient"; // oder "@/lib/..." wenn Alias gesetzt
 
 type Temp = {
   id: string;
