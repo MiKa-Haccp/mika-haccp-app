@@ -31,8 +31,8 @@ export default function Page() {
         </div>
 
         <div className="grid gap-4 sm:max-w-md">
-          <CTA href="/frischetheke" label="Checkliste starten" solid />
-          <CTA href="/markt" label="Auswertungen ansehen" />
+          <CTA href="/frischetheke" label="Frischetheke ToDo's" solid />
+          <CTA href="/markt" label="Markt ToDo's" />
           <CTA href="/dokumentation" label="Dokumentation" />
         </div>
       </section>
