@@ -15,7 +15,7 @@ export default function NavBar() {
           {/* Desktop-Navigation */}
           <nav className="ml-auto hidden items-center gap-4 text-sm md:flex">
             <a className="mika-link" href="/">Start</a>
-            <a className="mika-link" href="/frischetheke">Frischetheke ToDo's</a>
+            <a className="mika-link" href="/frischetheke">Frischetheke</a>
             <a className="mika-link" href="/markt">Markt ToDo's</a>
             <a className="mika-link" href="/dokumentation">Dokumentation</a>
             <span className="h-4 w-px mika-sep" />
@@ -37,7 +37,7 @@ export default function NavBar() {
         {open && (
           <div className="mt-3 grid gap-2 text-sm md:hidden">
             <a className="mika-link py-2" href="/" onClick={()=>setOpen(false)}>Start</a>
-            <a className="mika-link py-2" href="/frischetheke" onClick={()=>setOpen(false)}>Frischetheke ToDo's</a>
+            <a className="mika-link py-2" href="/frischetheke" onClick={()=>setOpen(false)}>Frischetheke</a>
             <a className="mika-link py-2" href="/markt" onClick={()=>setOpen(false)}>Markt ToDo's</a>
             <a className="mika-link py-2" href="/dokumentation" onClick={()=>setOpen(false)}>Dokumentation</a>
             <span className="h-px mika-sep" />
