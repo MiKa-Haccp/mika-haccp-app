@@ -1,15 +1,25 @@
 import Link from "next/link";
 import { ShieldIcon } from "@/components/Brand";
+import { CheckSquare, FileText } from "lucide-react"; // neue Icons oben importieren
 
 function CTA(props: { href: string; label: string; solid?: boolean }) {
   const { href, label, solid = false } = props;
-  const cls = solid
+
+  const box = solid
     ? "flex items-center gap-3 rounded-2xl px-5 py-4 mika-btn shadow"
     : "flex items-center gap-3 rounded-2xl px-5 py-4 mika-card shadow";
+
+  // Farben für Icons
+  const iconColor = solid ? "text-white" : "mika-brand";
+  const textColor = solid ? "text-white font-semibold" : "mika-brand font-semibold";
+
+  // Automatisch passendes Icon wählen:
+  const Icon = label.toLowerCase().includes("todo") ? CheckSquare : FileText;
+
   return (
-    <Link href={href} className={cls}>
-      <span className={solid ? "text-white" : "mika-brand"}>✔</span>
-      <span className="font-semibold">{label}</span>
+    <Link href={href} className={box}>
+      <Icon className={`${iconColor} w-5 h-5`} /> {/* ← Icon */}
+      <span className={textColor}>{label}</span>
     </Link>
   );
 }
