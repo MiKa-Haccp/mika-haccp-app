@@ -1,61 +1,98 @@
 "use client";
-import { useEffect, useState } from "react";
+
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-export default function AuthCallback() {
+// Optional, hilft gegen statische Vor-Render-Probleme:
+export const dynamic = "force-dynamic";
+
+function CallbackInner() {
   const params = useSearchParams();
   const router = useRouter();
+
+  const [stage, setStage] = useState<"checking" | "setpw" | "done">("checking");
   const [pw, setPw] = useState("");
-  const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Wenn der User mit einem Token kommt, Session setzen
+  // Erkennen, ob Invite/Recovery → Passwort setzen anzeigen
   useEffect(() => {
     const type = params.get("type");
-    const token = params.get("token");
-    if (token && type === "invite") {
-      supabase.auth.exchangeCodeForSession(token).then(({ error }) => {
-        if (error) setErr(error.message);
-      });
+    // Wenn Supabase den Code als Param liefert, Session herstellen (PKCE Flows)
+    const token = params.get("token") || params.get("code");
+    if (token && (type === "invite" || type === "recovery")) {
+      // Bei neueren Flows reicht oft die URL – exchangeCodeForSession nur, wenn nötig:
+      // Wir probieren es, Fehler ignorieren wir (Session evtl. schon gesetzt)
+      supabase.auth.exchangeCodeForSession(token).catch(() => {});
+      setStage("setpw");
+    } else {
+      setStage("done");
+      router.replace("/");
     }
-  }, [params]);
+  }, [params, router]);
 
-  const handleSave = async (e: React.FormEvent) => {
+  const onSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr(null);
-    setMsg(null);
     setLoading(true);
-
-    const { data, error } = await supabase.auth.updateUser({ password: pw });
+    const { error } = await supabase.auth.updateUser({ password: pw });
     setLoading(false);
-
     if (error) return setErr(error.message);
-    setMsg("Passwort gespeichert ✅ – Du kannst dich jetzt einloggen.");
-    setTimeout(() => router.push("/login"), 2000);
+    router.replace("/");
   };
+
+  if (stage === "checking") {
+    return (
+      <main className="min-h-screen grid place-items-center p-6">
+        Bitte warten…
+      </main>
+    );
+  }
+
+  if (stage === "setpw") {
+    return (
+      <main className="min-h-screen grid place-items-center p-6">
+        <form onSubmit={onSave} className="w-full max-w-md mika-frame grid gap-4">
+          <h1 className="text-xl font-bold mika-brand">Passwort festlegen</h1>
+          <input
+            type="password"
+            className="mika-input w-full"
+            placeholder="Neues Passwort"
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            required
+          />
+          {err && <p className="text-sm" style={{ color: "#b91c1c" }}>{err}</p>}
+          <button
+            className="mika-btn rounded-xl px-4 py-3 text-sm font-semibold"
+            disabled={loading}
+          >
+            {loading ? "Bitte warten…" : "Speichern & weiter"}
+          </button>
+        </form>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen grid place-items-center p-6">
-      <form
-        onSubmit={handleSave}
-        className="w-full max-w-sm space-y-3 border rounded-lg p-4 bg-white"
-      >
-        <h1 className="text-xl font-semibold">Passwort festlegen</h1>
-        <input
-          className="border p-2 w-full"
-          type="password"
-          placeholder="Neues Passwort"
-          value={pw}
-          onChange={(e) => setPw(e.target.value)}
-        />
-        {err && <p className="text-sm text-red-600">{err}</p>}
-        {msg && <p className="text-sm text-green-600">{msg}</p>}
-        <button className="border p-2 w-full" disabled={loading}>
-          {loading ? "Speichern…" : "Passwort speichern"}
-        </button>
-      </form>
+      Weiterleitung…
     </main>
   );
 }
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen grid place-items-center p-6">
+          Bitte warten…
+        </main>
+      }
+    >
+      <CallbackInner />
+    </Suspense>
+  );
+}
+
