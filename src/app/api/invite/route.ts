@@ -45,7 +45,11 @@ export async function POST(req: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY! // nur Server!
   );
 
-  const redirectTo = `${process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/auth/callback`;
+  const base =
+  process.env.NEXT_PUBLIC_SITE_URL
+  ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+
+  const redirectTo = `${base}/auth/callback`;
   const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, { redirectTo });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
