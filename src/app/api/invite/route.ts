@@ -46,11 +46,14 @@ export async function POST(req: Request) {
   );
 
   const base =
-  process.env.NEXT_PUBLIC_SITE_URL
-  ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+    process.env.NEXT_PUBLIC_SITE_URL
+    ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
-  const redirectTo = `${base}/auth/callback`;
-  const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, { redirectTo });
+  const redirectTo = `${base}/auth/callback?type=invite`;
+
+  const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
+    redirectTo,
+  });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ ok: true, user: data.user });
