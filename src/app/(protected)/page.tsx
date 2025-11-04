@@ -1,31 +1,41 @@
 import Link from "next/link";
+import { ShieldIcon } from "@/components/Brand";
 
-function Tile({ href, title, desc }: { href: string; title: string; desc: string }) {
+function CTA(props: { href: string; label: string; solid?: boolean }) {
+  const { href, label, solid = false } = props;
+  const cls = solid
+    ? "flex items-center gap-3 rounded-2xl px-5 py-4 mika-btn shadow"
+    : "flex items-center gap-3 rounded-2xl px-5 py-4 mika-card shadow";
   return (
-    <Link
-      href={href}
-      className="group rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition hover:shadow-md"
-    >
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">{title}</h3>
-        <span className="text-gray-400 group-hover:translate-x-0.5 transition">→</span>
-      </div>
-      <p className="mt-2 text-sm text-gray-600">{desc}</p>
+    <Link href={href} className={cls}>
+      <span className={solid ? "text-white" : "mika-brand"}>✔</span>
+      <span className="font-semibold">{label}</span>
     </Link>
   );
 }
 
 export default function Page() {
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10">
-      <h1 className="text-3xl font-bold mb-6">MiKa HACCP</h1>
-      <p className="text-gray-600 mb-10">Wähle einen Bereich aus:</p>
+    <main className="mx-auto max-w-5xl px-4 py-12">
+      <section className="mika-frame mb-10">
+        <div className="flex items-start gap-4 mb-6">
+          <div className="mika-brand">
+            <ShieldIcon className="h-16 w-16" />
+          </div>
+          <div className="mika-brand">
+            <h1 className="text-4xl font-extrabold leading-tight">MiKa HACCP</h1>
+            <p className="mt-2 opacity-70 mika-ink">
+              Ihr digitaler Partner für Lebensmittelsicherheit
+            </p>
+          </div>
+        </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Tile href="/frischetheke" title="Frischetheke To Do" desc="Temperaturen, Reinigung, Prüfungen" />
-        <Tile href="/markt" title="Markt To Do" desc="Rundgänge, Wareneingang, Korrekturmaßnahmen" />
-        <Tile href="/dokumentation" title="Dokumentation" desc="Schulungen, Nachweise, Formulare" />
-      </div>
+        <div className="grid gap-4 sm:max-w-md">
+          <CTA href="/frischetheke" label="Checkliste starten" solid />
+          <CTA href="/markt" label="Auswertungen ansehen" />
+          <CTA href="/dokumentation" label="Dokumentation" />
+        </div>
+      </section>
     </main>
   );
 }

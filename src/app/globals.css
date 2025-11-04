@@ -1,26 +1,68 @@
+/* src/app/globals.css */
+
+/* Tailwind v4 laden */
 @import "tailwindcss";
 
+/* --- MiKa Theme (reines CSS, KEIN @apply) --- */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --mica-bg:    #F6F1E8; /* warmes Beige */
+  --mica-ink:   #0F2B27; /* sehr dunkles Grün (Text) */
+  --mica-brand: #3E7C71; /* Hauptgrün */
+  --mica-brand2:#2F5E56; /* Hover/Rahmen */
+  --mica-tint:  #E9E3D8; /* helle Karte */
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html, body { height: 100%; }
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--mica-bg);
+  color: var(--mica-ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+/* Hilfsklassen für JSX */
+.mika-bg      { background: var(--mica-bg); }
+.mika-ink     { color: var(--mica-ink); }
+.mika-brand   { color: var(--mica-brand); }
+.mika-card    { background: var(--mica-tint); }
+.mika-border  { border-color: color-mix(in oklab, var(--mica-brand) 20%, transparent); }
+.mika-bg-90   { background-color: color-mix(in oklab, var(--mica-bg) 90%, transparent); }
+
+.mika-btn {
+  background: var(--mica-brand);
+  color: #fff;
+  transition: background .15s ease;
+}
+.mika-btn:hover { background: var(--mica-brand2); }
+
+.mika-frame {
+  border-radius: 24px;
+  border: 2px solid color-mix(in oklab, var(--mica-brand) 40%, transparent);
+  padding: clamp(1.25rem, 2vw, 2.5rem);
+  background: var(--mica-bg);
+  box-shadow: 0 10px 30px color-mix(in oklab, var(--mica-ink) 12%, transparent);
+}
+/* Form-Styles im MiKa-Look */
+.mika-input {
+  background: var(--mica-tint);
+  border: 2px solid color-mix(in oklab, var(--mica-brand) 30%, transparent);
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  outline: none;
+}
+.mika-input:focus {
+  border-color: var(--mica-brand);
+}
+
+.mika-label {
+  font-size: .9rem;
+  margin-bottom: .25rem;
+  display: inline-block;
+}
+
+.mika-hero-title { font-weight: 800; }
+
+.mika-link { color: inherit; text-decoration: none; transition: color .15s ease, opacity .15s ease; }
+.mika-link:hover { color: var(--mica-brand); }
+.mika-sep { background-color: color-mix(in oklab, var(--mica-brand) 20%, transparent); }
+
