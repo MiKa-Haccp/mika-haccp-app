@@ -1,18 +1,28 @@
+"use client";
+
+import { usePathname } from "next/navigation";
 import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
-
-export const metadata = {
-  title: "MiKa HACCP",
-  description: "HACCP-Dokumentation",
-};
+import MarketProvider from "@/components/MarketProvider";
+import EnsureMarket from "@/components/EnsureMarket";
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+
+  // Alle Doku-Seiten (inkl. /dokumentation/admin) ohne EnsureMarket laufen lassen
+  const skipEnsure =
+    pathname?.startsWith("/dokumentation");
+
   return (
     <AuthGuard>
-      <NavBar />
-      <div className="pt-20"> {/* Platz für fixe Leiste (mobil etwas höher) */}
-        <div className="mx-auto max-w-6xl px-4">{children}</div>
-      </div>
+      <MarketProvider>
+        <NavBar />
+        <div className="pt-20">
+          <div className="mx-auto max-w-6xl px-4">
+            <EnsureMarket>{children}</EnsureMarket>
+          </div>
+        </div>
+      </MarketProvider>
     </AuthGuard>
   );
 }

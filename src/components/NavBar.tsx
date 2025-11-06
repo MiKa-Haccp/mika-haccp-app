@@ -1,50 +1,67 @@
 "use client";
 
-import { useState } from "react";
-import Brand from "@/components/Brand";
-import LogoutButton from "@/components/LogoutButton";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { isAdmin, getMarketId } from "@/lib/currentContext";
+import { useMyMarkets } from "@/hooks/useMyMarkets";
 
 export default function NavBar() {
-  const [open, setOpen] = useState(false);
+  const [admin, setAdmin] = useState(false);
+  const [active, setActive] = useState<string | null>(null);
+  const { markets, loading } = useMyMarkets();
+
+  useEffect(() => {
+    (async () => {
+      setAdmin(await isAdmin());
+      setActive(await getMarketId());
+    })();
+  }, []);
+
+  const onSelect = (marketId: string) => {
+    try { localStorage.setItem("activeMarketId", marketId); } catch {}
+    window.location.reload(); // neu laden, damit Context überall greift
+  };
+
+  const activeLabel = useMemo(() => {
+    const found = markets.find(m => m.id === active);
+    return found?.name ?? (active ?? "Kein Markt");
+  }, [markets, active]);
 
   return (
-    <header className="fixed inset-x-0 top-0 z-10 border-b mika-border mika-bg-90 backdrop-blur">
-      <div className="mx-auto max-w-6xl px-4 py-3">
-        <div className="flex items-center gap-3">
-          <Brand size="text-xl" />
-          {/* Desktop-Navigation */}
-          <nav className="ml-auto hidden items-center gap-4 text-sm md:flex">
-            <a className="mika-link" href="/">Start</a>
-            <a className="mika-link" href="/frischetheke">Frischetheke</a>
-            <a className="mika-link" href="/markt">Markt ToDo's</a>
-            <a className="mika-link" href="/dokumentation">Dokumentation</a>
-            <span className="h-4 w-px mika-sep" />
-            <LogoutButton />
-          </nav>
+    <header className="fixed top-0 inset-x-0 z-50 bg-white/80 backdrop-blur border-b">
+      <div className="mx-auto max-w-6xl px-4 h-16 flex items-center justify-between">
+        <nav className="flex items-center gap-6">
+          <Link href="/markt">Markt</Link>
+          <Link href="/metzgerei">Metzgerei</Link>
+          <Link href="/dokumentation">Dokumentation</Link>
+          {admin && <Link href="/dokumentation/admin" className="font-semibold">Admin</Link>}
+        </nav>
 
-          {/* Mobile-Button */}
-          <button
-            onClick={() => setOpen((v) => !v)}
-            className="ml-auto inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm md:hidden"
-            aria-expanded={open}
-            aria-label="Menü umschalten"
-          >
-            ☰
-          </button>
-        </div>
-
-        {/* Mobile-Dropdown */}
-        {open && (
-          <div className="mt-3 grid gap-2 text-sm md:hidden">
-            <a className="mika-link py-2" href="/" onClick={()=>setOpen(false)}>Start</a>
-            <a className="mika-link py-2" href="/frischetheke" onClick={()=>setOpen(false)}>Frischetheke</a>
-            <a className="mika-link py-2" href="/markt" onClick={()=>setOpen(false)}>Markt ToDo's</a>
-            <a className="mika-link py-2" href="/dokumentation" onClick={()=>setOpen(false)}>Dokumentation</a>
-            <span className="h-px mika-sep" />
-            <LogoutButton />
+        {/* Admin-only Markt-Switcher (rechts) */}
+        {admin && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm opacity-70 hidden sm:inline">Markt:</span>
+            <select
+              className="mika-input text-sm w-56"
+              disabled={loading || markets.length === 0}
+              value={active ?? ""}
+              onChange={(e) => onSelect(e.target.value)}
+            >
+              {/* Aktiver Markt zuerst zeigen (falls nicht in Liste) */}
+              {active && !markets.some(m => m.id === active) && (
+                <option value={active}>{activeLabel}</option>
+              )}
+              {markets.map(m => (
+                <option key={m.id} value={m.id}>
+                  {m.name || m.id}
+                </option>
+              ))}
+              {!active && markets.length === 0 && <option value="">Kein Markt</option>}
+            </select>
           </div>
         )}
       </div>
     </header>
   );
 }
+

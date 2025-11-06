@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabaseClient";
 
 type Section = { id: string; title: string; number: number; space_id: string };
 
-export default function MarktPage() {
+export default function MetzgereiPage() {
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -26,7 +26,7 @@ export default function MarktPage() {
         .from("spaces")
         .select("id")
         .eq("market_id", mm.market_id)
-        .eq("key", "markt")
+        .eq("key", "metzgerei")
         .maybeSingle();
       if (!sp) { setLoading(false); return; }
 
@@ -46,7 +46,7 @@ export default function MarktPage() {
 
   return (
     <main className="mx-auto max-w-5xl p-6">
-      <h1 className="text-2xl font-extrabold mb-4"><span className="mika-brand">Markt</span></h1>
+      <h1 className="text-2xl font-extrabold mb-4"><span className="mika-brand">Metzgerei</span></h1>
       <ul className="space-y-2">
         {sections.map(s => (
           <li key={s.id}>
@@ -63,3 +63,4 @@ export default function MarktPage() {
     </main>
   );
 }
+
