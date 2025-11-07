@@ -5,3 +5,14 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  async redirects() {
+    return [
+      { source: '/frischetheke', destination: '/metzgerei', permanent: true },
+      { source: '/frischetheke/:path*', destination: '/metzgerei/:path*', permanent: true },
+    ];
+  },
+};
+module.exports = nextConfig;

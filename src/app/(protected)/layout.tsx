@@ -1,18 +1,24 @@
-"use client";
+// src/app/(protected)/layout.tsx
 
-import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
 import AuthGuard from "@/components/AuthGuard";
 import NavBar from "@/components/NavBar";
 import MarketProvider from "@/components/MarketProvider";
 import EnsureMarket from "@/components/EnsureMarket";
 
-export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+// Next.js 16: viewport separat exportieren (nicht in metadata)
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
 
-  // Alle Doku-Seiten (inkl. /dokumentation/admin) ohne EnsureMarket laufen lassen
-  const skipEnsure =
-    pathname?.startsWith("/dokumentation");
+// (optional) Grund-Metadaten – ohne viewport
+export const metadata = {
+  title: "MiKa HACCP",
+  description: "Ihr digitaler Partner für Lebensmittelsicherheit",
+};
 
+export default function ProtectedLayout({ children }: { children: ReactNode }) {
   return (
     <AuthGuard>
       <MarketProvider>

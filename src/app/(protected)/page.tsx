@@ -1,30 +1,42 @@
-import Link from "next/link";
-import { ShieldIcon } from "@/components/Brand";
-import { CheckSquare, FileText } from "lucide-react"; // neue Icons oben importieren
+"use client";
 
-function CTA(props: { href: string; label: string; solid?: boolean }) {
-  const { href, label, solid = false } = props;
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { ShieldIcon } from "@/components/Brand";
+import { isAdmin } from "@/lib/currentContext";
+import { CheckSquare, FileText, Users } from "lucide-react";
+
+// Next 16: viewport separat exportieren
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
+
+function CTA(props: { href: string; label: string; solid?: boolean; icon?: React.ComponentType<any> }) {
+  const { href, label, solid = false, icon: Icon = CheckSquare } = props;
 
   const box = solid
-    ? "flex items-center gap-3 rounded-2xl px-5 py-4 mika-btn shadow"
-    : "flex items-center gap-3 rounded-2xl px-5 py-4 mika-card shadow";
+    ? "flex items-center gap-3 rounded-2xl px-5 py-4 mika-btn shadow hover:shadow-lg transition"
+    : "flex items-center gap-3 rounded-2xl px-5 py-4 mika-card shadow hover:shadow-lg transition";
 
-  // Farben für Icons
   const iconColor = solid ? "text-white" : "mika-brand";
   const textColor = solid ? "text-white font-semibold" : "mika-brand font-semibold";
 
-  // Automatisch passendes Icon wählen:
-  const Icon = label.toLowerCase().includes("todo") ? CheckSquare : FileText;
-
   return (
     <Link href={href} className={box}>
-      <Icon className={`${iconColor} w-5 h-5`} /> {/* ← Icon */}
+      <Icon className={`${iconColor} w-5 h-5`} />
       <span className={textColor}>{label}</span>
     </Link>
   );
 }
 
-export default function Page() {
+export default function ProtectedHomePage() {
+  const [admin, setAdmin] = useState(false);
+
+  useEffect(() => {
+    (async () => setAdmin(await isAdmin()))();
+  }, []);
+
   return (
     <main className="mx-auto max-w-5xl px-4 py-12">
       <section className="mika-frame mb-10">
@@ -41,11 +53,24 @@ export default function Page() {
         </div>
 
         <div className="grid gap-4 sm:max-w-md">
-          <CTA href="/frischetheke" label="Frischetheke ToDo's" solid />
-          <CTA href="/markt" label="Markt ToDo's" />
-          <CTA href="/dokumentation" label="Dokumentation" />
+          {/* Hauptbereiche */}
+          <CTA href="/metzgerei" label="Metzgerei ToDo's" solid icon={CheckSquare} />
+          <CTA href="/markt" label="Markt ToDo's" icon={CheckSquare} />
+          <CTA href="/dokumentation" label="Dokumentation" icon={FileText} />
+
+          {/* Admin-Bereich nur anzeigen, wenn Admin */}
+          {admin && (
+            <>
+              <div className="h-px bg-gray-200 my-2" />
+              <CTA href="/dokumentation/admin" label="Dokumentation – Admin" icon={FileText} />
+              <CTA href="/admin/invite" label="Benutzer einladen" icon={Users} />
+              {/* Falls du die Einladungsseite für Markt-Links nutzt: */}
+              {/* <CTA href="/markt/einladen" label="Einladungslinks (Markt)" icon={Users} /> */}
+            </>
+          )}
         </div>
       </section>
     </main>
   );
 }
+
