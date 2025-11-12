@@ -1,54 +1,66 @@
-"use client";
+'use client';
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import { getMarketId } from "@/lib/currentContext";
+import { getMarketId } from "@/lib/currentContext"; // liest bei dir ebenfalls aus storage/server
 
-export type DokuSection = {
-  id: string;
-  market_id: string | null;
-  slug: string;
-  title: string;
-  subtitle: string | null;
-  sort_order: number;
-  enabled: boolean;
-};
+type Section = { id: string; slug: string; label: string; status?: "ok"|"open"; marketId?: string|null };
 
 export function useDokuSections() {
-  const [sections, setSections] = useState<DokuSection[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const load = async () => {
-    setLoading(true);
-    const marketId = await getMarketId();
-
-    let q = supabase
-      .from("doku_sections")
-      .select("*")
-      .eq("enabled", true)
-      .order("sort_order", { ascending: true });
-
-    if (marketId) {
-      q = q.or(`market_id.eq.${marketId},market_id.is.null`);
-    } else {
-      q = q.is("market_id", null);
-    }
-
-    const { data, error } = await q;
-    if (!error) setSections((data as DokuSection[]) || []);
-    setLoading(false);
-  };
+  const [sections, setSections] = useState<Section[]>([]);
+  const [isLoading, setLoading] = useState(true);
+  const [error, setError] = useState<unknown>(null);
 
   useEffect(() => {
+    let alive = true;
+
+    async function load() {
+      try {
+        setLoading(true);
+        const qs = new URLSearchParams({ tenantId: "T1" });
+
+        // 1) bevorzugt: aus deinem helper
+        let mkId: string | null = null;
+        try { mkId = await getMarketId(); } catch {}
+
+        // 2) fallback: keys aus localStorage
+        if (!mkId && typeof window !== "undefined") {
+          mkId = localStorage.getItem("activeMarketId")
+             || localStorage.getItem("currentMarketId")
+             || null;
+        }
+
+        if (mkId) qs.set("marketId", mkId);
+
+        const url = `/api/doku/sections?${qs.toString()}`;
+        console.log("[useDokuSections] fetch", { mkId, url });
+
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) throw new Error("failed");
+        const json = await res.json();
+        if (alive) setSections(json.sections ?? []);
+      } catch (e) {
+        if (alive) setError(e);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+
     load();
-    const ch = supabase
-      .channel("doku_sections_changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "doku_sections" }, () => load())
-      .subscribe();
-    return () => supabase.removeChannel(ch);
+
+    // reagieren, wenn in einem anderen Tab der Markt gewechselt wird
+    function onStorage(e: StorageEvent) {
+      if (e.key === "activeMarketId" || e.key === "currentMarketId") {
+        load();
+      }
+    }
+    if (typeof window !== "undefined") window.addEventListener("storage", onStorage);
+
+    return () => {
+      alive = false;
+      if (typeof window !== "undefined") window.removeEventListener("storage", onStorage);
+    };
   }, []);
 
-  return { sections, loading, reload: load };
+  return { sections, isLoading, error };
 }
-
 
 

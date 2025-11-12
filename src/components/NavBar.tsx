@@ -18,7 +18,10 @@ export default function NavBar() {
   }, []);
 
   const onSelect = (marketId: string) => {
-    try { localStorage.setItem("activeMarketId", marketId); } catch {}
+    try { 
+      localStorage.setItem("activeMarketId", marketId);     
+      localStorage.setItem("currentMarketId", marketId);  // kompatibler Key fürs restliche  
+      } catch {}
     window.location.reload(); // neu laden, damit Context überall greift
   };
 

@@ -1,248 +1,141 @@
 "use client";
+import { useEffect, useState } from "react";
 
-import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
-import { getMarketId } from "@/lib/currentContext";
-import UploadField from "@/components/UploadField";
-
-type Entry = {
-  id: string;
-  market_id: string | null;
-  section_id: string;                // = slug
-  user_id: string;
-  note: string | null;
-  status: "offen" | "erledigt";
-  file_name: string | null;
-  file_path: string | null;
-  mime_type: string | null;
-  created_at: string;
+const DEF_MAP: Record<string, string> = {
+  zust: "DEF_ZUST_MON",        // passe deine Keys an
+  kuerzel: "DEF_KUERZEL_MON",
+  schulungen: "DEF_SCHUL_MON",
 };
 
-type Section = {
-  id: string;
-  slug: string;
-  title: string;
-  subtitle: string | null;
-};
+function todayISO() {
+  const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
 
-export default function DokuSectionPage() {
-  const { slug } = useParams<{ slug: string }>();
-  const [section, setSection] = useState<Section | null>(null);
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [note, setNote] = useState("");
+export default function DokuSectionPage({ params }: { params: { slug: string } }) {
+  const slug = params.slug;
+  const definitionId = DEF_MAP[slug] ?? "DEF_ZUST_MON";
+
+  // DEV: hole aktive Markt-ID aus localStorage (bei dir ist Context bereits vorhanden)
   const [marketId, setMarketId] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [filter, setFilter] = useState<"alle" | "offen" | "erledigt">("alle");
-
-  const filtered = useMemo(() => {
-    if (filter === "alle") return entries;
-    return entries.filter((e) => e.status === filter);
-  }, [entries, filter]);
-
-  const loadSection = async (mid: string | null) => {
-    // Markt-spezifische Sektion bevorzugen, sonst globale
-    const { data, error } = await supabase
-      .from("doku_sections")
-      .select("id, slug, title, subtitle, market_id")
-      .eq("slug", slug)
-      .in("market_id", [mid, null] as any)
-      .eq("enabled", true)
-      .order("market_id", { ascending: false }) // zuerst markt-spezifisch
-      .limit(1);
-
-    if (error) return setSection(null);
-    setSection((data?.[0] as Section) ?? null);
-  };
-
-  const loadEntries = async () => {
-    const { data } = await supabase
-      .from("entries")
-      .select("*")
-      .eq("section_id", slug)
-      .order("created_at", { ascending: false });
-    setEntries((data as Entry[]) || []);
-  };
-
-  const addEntry = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!marketId) return;
-    setBusy(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      await supabase.from("entries").insert({
-        market_id: marketId,
-        section_id: slug,
-        user_id: user.id,
-        note,
-        status: "offen",
-      });
-      setNote("");
-      await loadEntries();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onUploaded = async (payload: { file_path: string; file_name: string; mime_type: string }) => {
-    if (!marketId) return;
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    await supabase.from("entries").insert({
-      market_id: marketId,
-      section_id: slug,
-      user_id: user.id,
-      note: null,
-      status: "offen",
-      file_name: payload.file_name,
-      file_path: payload.file_path,
-      mime_type: payload.mime_type,
-    });
-    await loadEntries();
-  };
-
-  const toggleStatus = async (entry: Entry) => {
-    const next = entry.status === "offen" ? "erledigt" : "offen";
-    await supabase.from("entries").update({ status: next }).eq("id", entry.id);
-    await loadEntries();
-  };
-
-  const getPublicUrl = (file_path: string) => {
-    const { data } = supabase.storage.from("dokumente").getPublicUrl(file_path);
-    return data.publicUrl;
-  };
 
   useEffect(() => {
-    let channel: ReturnType<typeof supabase.channel> | null = null;
-    let mounted = true;
+    try {
+      const mk = localStorage.getItem("activeMarketId");
+      if (mk) setMarketId(mk);
+    } catch {}
+  }, []);
 
-    (async () => {
-      const mid = await getMarketId();
-      if (!mounted) return;
+  // Formular-States
+  const [date, setDate] = useState(todayISO());
+  const [temp, setTemp] = useState<string>("");          // Beispiel-Feld
+  const [initials, setInitials] = useState("");
+  const [pin, setPin] = useState("");
 
-      setMarketId(mid);
-      await loadSection(mid);
-      await loadEntries();
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
-      channel = supabase
-        .channel(`entries_${slug}`)
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "entries", filter: `section_id=eq.${slug}` },
-          () => loadEntries()
-        )
-        .subscribe();
-    })();
+  async function onSave(e: React.FormEvent) {
+    e.preventDefault();
+    setMsg(null);
+    if (!marketId) { setMsg("Kein Markt gewählt."); return; }
 
-    // SYNC Cleanup – KEIN async/await hier
-    return () => {
-      mounted = false;
-      if (channel) {
-        // bewusst nicht awaiten – Cleanup muss sync sein
-        supabase.removeChannel(channel);
+    setSaving(true);
+    try {
+      const res = await fetch("/api/forms/entries/upsert", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          definitionId,
+          marketId,
+          periodRef: date.slice(0,7),   // "YYYY-MM"
+          date,
+          data: { temp },               // Beispiel: ein Messwert
+          sign: { initials, pin },      // DEV-sign
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.ok) {
+        setMsg(json?.error ?? "Speichern fehlgeschlagen");
+      } else {
+        setMsg("Gespeichert ✔");
+        setPin(""); // Sicherheit: PIN leeren
       }
-    };
-  }, [slug]);
-
-  if (!section) {
-    return (
-      <main className="mx-auto max-w-3xl p-6">
-        <h1 className="text-xl font-bold">Bereich nicht gefunden</h1>
-        <p className="text-gray-600 mt-2">
-          Dieser Bereich ist nicht aktiv oder existiert nicht. Bitte prüfe die Einstellungen in der Admin-Ansicht.
-        </p>
-      </main>
-    );
+    } catch (err) {
+      setMsg("Serverfehler");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
-    <main className="mx-auto max-w-3xl p-6 space-y-6">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-mica-brand">{section.title}</h1>
-          {section.subtitle && <p className="text-gray-600 -mt-1">{section.subtitle}</p>}
-        </div>
-        <a href="/dokumentation" className="text-sm underline mt-1">Zur Übersicht</a>
-      </div>
+    <main className="p-6">
+      <h1 className="text-xl font-bold mb-4">Dokumentation · {slug}</h1>
 
-      {/* Neuer Eintrag */}
-      <form onSubmit={addEntry} className="mika-frame space-y-3">
-        <textarea
-          className="mika-input w-full"
-          placeholder={`Notiz zu ${section.title} hinzufügen...`}
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          required
-        />
-        <div className="flex flex-wrap gap-3">
-          <button className="mika-btn px-4 py-2 rounded-xl" disabled={busy}>
-            {busy ? "Speichere..." : "Speichern"}
+      <form onSubmit={onSave} className="max-w-xl space-y-3 rounded-2xl border p-4">
+        <div className="grid gap-2">
+          <label className="text-sm">
+            Datum
+            <input
+              type="date"
+              className="mt-1 w-full rounded border px-3 py-2"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </label>
+
+          <label className="text-sm">
+            Temperatur (°C) – Beispiel
+            <input
+              type="number"
+              step="0.1"
+              className="mt-1 w-full rounded border px-3 py-2"
+              value={temp}
+              onChange={(e) => setTemp(e.target.value)}
+              placeholder="z. B. 4.0"
+            />
+          </label>
+
+          <div className="grid sm:grid-cols-2 gap-2">
+            <label className="text-sm">
+              Initialen
+              <input
+                className="mt-1 w-full rounded border px-3 py-2"
+                value={initials}
+                onChange={(e) => setInitials(e.target.value.toUpperCase())}
+                placeholder="z. B. MD"
+                required
+              />
+            </label>
+            <label className="text-sm">
+              PIN
+              <input
+                type="password"
+                className="mt-1 w-full rounded border px-3 py-2"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                placeholder="4-stellig"
+                required
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="pt-2 flex items-center gap-3">
+          <button
+            className="rounded-lg bg-black px-4 py-2 text-white disabled:opacity-50"
+            disabled={saving || !marketId}
+          >
+            {saving ? "Speichere…" : "Speichern"}
           </button>
-          {marketId && (
-            <UploadField marketId={marketId} sectionId={slug} onUploaded={onUploaded} />
-          )}
+          {msg && <span className="text-sm opacity-80">{msg}</span>}
+          {!marketId && <span className="text-sm text-red-600">Bitte oben in der Navi einen Markt wählen.</span>}
         </div>
       </form>
-
-      {/* Filter */}
-      <div className="flex items-center gap-2">
-        <span className="text-sm opacity-70">Filter:</span>
-        <select
-          className="mika-input text-sm w-auto"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value as any)}
-        >
-          <option value="alle">Alle</option>
-          <option value="offen">Offen</option>
-          <option value="erledigt">Erledigt</option>
-        </select>
-      </div>
-
-      {/* Liste */}
-      <div className="space-y-3">
-        {filtered.map((e) => (
-          <div key={e.id} className="border rounded-xl p-4 bg-white flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-gray-600">
-                {new Date(e.created_at).toLocaleString("de-DE")}
-              </div>
-              <button
-                onClick={() => toggleStatus(e)}
-                className={`px-3 py-1 rounded-lg text-sm ${
-                  e.status === "erledigt" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-800"
-                }`}
-                title="Status umschalten"
-              >
-                {e.status === "erledigt" ? "Erledigt" : "Offen"}
-              </button>
-            </div>
-
-            {e.note && <p className="text-gray-900 whitespace-pre-wrap">{e.note}</p>}
-
-            {e.file_path && (
-              <div className="flex items-center gap-3 text-sm">
-                <a
-                  className="underline"
-                  href={getPublicUrl(e.file_path)}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {e.file_name || "Datei öffnen"}
-                </a>
-                {e.mime_type && <span className="text-gray-500">{e.mime_type}</span>}
-              </div>
-            )}
-          </div>
-        ))}
-
-        {!filtered.length && (
-          <p className="text-gray-500">Keine Einträge vorhanden.</p>
-        )}
-      </div>
     </main>
   );
 }
+
+
 
 

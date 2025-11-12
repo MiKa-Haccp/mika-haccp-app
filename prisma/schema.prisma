@@ -1,0 +1,100 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------
+// Formsystem (Monatsblätter / Tages-Einträge)
+// ----------------------------------------------------
+
+model FormDefinition {
+  id          String         @id @default(cuid())
+  tenantId    String
+  categoryKey String
+  sectionKey  String
+  label       String
+  period      String
+  schemaJson  Json
+  active      Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  // 👉 Gegenfeld zur Relation in FormInstance:
+  instances   FormInstance[]
+
+  @@index([tenantId, sectionKey, active])
+}
+
+model FormInstance {
+  id               String         @id @default(cuid())
+  tenantId         String
+  marketId         String
+  formDefinitionId String
+  year             Int
+  periodRef        String
+  status           String
+  previousYearRef  String?
+  createdBy        String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  definition       FormDefinition @relation(fields: [formDefinitionId], references: [id])
+  entries          FormEntry[]
+
+  @@unique([tenantId, marketId, formDefinitionId, periodRef])
+  @@index([tenantId, marketId, periodRef])
+}
+
+model FormEntry {
+  id             String       @id @default(cuid())
+  formInstanceId String
+  date           DateTime
+  dataJson       Json
+  completedBy    String?
+  signatureType  String?
+  signatureMeta  Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  instance       FormInstance @relation(fields: [formInstanceId], references: [id])
+
+  @@unique([formInstanceId, date])
+}
+
+model DokuSection {
+  id          String   @id @default(cuid())
+  tenantId    String
+  marketId    String? // null = global
+  categoryKey String   @default("dokumentation")
+  slug        String
+  label       String
+  active      Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, marketId, slug])
+  @@index([tenantId, marketId, active])
+}
+
+enum RbacRole {
+  SUPERADMIN
+  ADMIN
+  STAFF
+}
+
+model RbacAssignment {
+  id          String   @id @default(cuid())
+  tenantId    String
+  marketId    String?
+  principalId String
+  role        RbacRole
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, marketId, principalId, role])
+}

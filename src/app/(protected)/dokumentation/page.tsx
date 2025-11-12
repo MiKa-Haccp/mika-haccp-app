@@ -1,57 +1,38 @@
-"use client";
+'use client';
 
 import Link from "next/link";
-import { ShieldIcon } from "@/components/Brand";
-import { CheckSquare, FileText } from "lucide-react";
+import { useDokuSections } from "@/hooks/useDokuSections";
 
-// Next 16: viewport separat exportieren (nicht in metadata)
-export const viewport = {
-  width: "device-width",
-  initialScale: 1,
-};
-
-function CTA(props: { href: string; label: string; solid?: boolean }) {
-  const { href, label, solid = false } = props;
-
-  const box = solid
-    ? "flex items-center gap-3 rounded-2xl px-5 py-4 mika-btn shadow"
-    : "flex items-center gap-3 rounded-2xl px-5 py-4 mika-card shadow";
-
-  const iconColor = solid ? "text-white" : "mika-brand";
-  const textColor = solid ? "text-white font-semibold" : "mika-brand font-semibold";
-
-  const Icon = label.toLowerCase().includes("todo") ? CheckSquare : FileText;
-
-  return (
-    <Link href={href} className={box}>
-      <Icon className={`${iconColor} w-5 h-5`} />
-      <span className={textColor}>{label}</span>
-    </Link>
-  );
+function Dot({ status }: { status: "ok" | "open" }) {
+  const cls = status === "ok" ? "bg-green-500" : "bg-red-500";
+  return <span className={`inline-block h-3 w-3 rounded-full ${cls}`} />;
 }
 
 export default function Page() {
-  return (
-    <main className="mx-auto max-w-5xl px-4 py-12">
-      <section className="mika-frame mb-10">
-        <div className="flex items-start gap-4 mb-6">
-          <div className="mika-brand">
-            <ShieldIcon className="h-16 w-16" />
-          </div>
-          <div className="mika-brand">
-            <h1 className="text-4xl font-extrabold leading-tight">MiKa HACCP</h1>
-            <p className="mt-2 opacity-70 mika-ink">Ihr digitaler Partner für Lebensmittelsicherheit</p>
-          </div>
-        </div>
+  const { sections, isLoading, error } = useDokuSections(); // ← lädt /api/doku/sections
 
-        <div className="grid gap-4 sm:max-w-md">
-          {/* ALT: /frischetheke → NEU: /metzgerei */}
-          <CTA href="/metzgerei" label="Metzgerei ToDo's" solid />
-          <CTA href="/markt" label="Markt ToDo's" />
-          <CTA href="/dokumentation" label="Dokumentation" />
-        </div>
-      </section>
+  if (isLoading) return <main className="p-6">Lade…</main>;
+  if (error) return <main className="p-6 text-red-600">Fehler beim Laden.</main>;
+
+  return (
+    <main className="p-6">
+      <h1 className="text-2xl font-bold mb-4">Dokumentation</h1>
+      <ul className="space-y-2">
+        {sections?.map((s: any) => (
+          <li key={s.slug ?? s.id} className="flex items-center gap-3">
+            <Dot status={(s.status as "ok" | "open") ?? "open"} />
+            <Link
+              href={`/dokumentation/${s.slug ?? s.id}`}
+              className="flex-1 rounded-xl border p-4 hover:bg-gray-50"
+            >
+              {s.label}
+            </Link>
+          </li>
+        ))}
+        {(!sections || sections.length === 0) && (
+          <li className="opacity-70">Noch keine Sektionen angelegt.</li>
+        )}
+      </ul>
     </main>
   );
 }
-
