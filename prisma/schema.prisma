@@ -98,3 +98,18 @@ model RbacAssignment {
 
   @@index([tenantId, marketId, principalId, role])
 }
+
+model StaffProfile {
+  id        String   @id @default(cuid())
+  tenantId  String
+  marketId  String?
+  username  String   @unique
+  pinHash   String
+  initials  String // bei SQLite KEIN @db.VarChar(...)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, initials]) // <-- HINZUGEFÜGT
+  @@index([tenantId, marketId, active])
+}
