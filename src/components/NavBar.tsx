@@ -37,7 +37,7 @@ export default function NavBar() {
           <Link href="/markt">Markt</Link>
           <Link href="/metzgerei">Metzgerei</Link>
           <Link href="/dokumentation">Dokumentation</Link>
-          {admin && <Link href="/dokumentation/admin" className="font-semibold">Admin</Link>}
+          {admin && <Link href="/admin" className="font-semibold">Admin</Link>}
         </nav>
 
         {/* Admin-only Markt-Switcher (rechts) */}

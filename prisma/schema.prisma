@@ -81,35 +81,39 @@ model DokuSection {
   @@index([tenantId, marketId, active])
 }
 
-enum RbacRole {
-  SUPERADMIN
-  ADMIN
-  STAFF
-}
-
 model RbacAssignment {
   id          String   @id @default(cuid())
   tenantId    String
   marketId    String?
   principalId String
-  role        RbacRole
+  role        RoleName
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  @@unique([tenantId, marketId, principalId, role])
+  // Globale Rollen (SUPERADMIN ohne Markt)
+  @@unique([tenantId, principalId, role])
+  // Markt-spezifische Rollen (ADMIN, STAFF)
   @@index([tenantId, marketId, principalId, role])
+}
+
+enum RoleName {
+  SUPERADMIN
+  ADMIN
+  STAFF
 }
 
 model StaffProfile {
   id        String   @id @default(cuid())
   tenantId  String
   marketId  String?
-  username  String   @unique
+  username  String?  @unique // ⬅️ optional machen
   pinHash   String
-  initials  String // bei SQLite KEIN @db.VarChar(...)
+  initials  String
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([tenantId, initials]) // <-- HINZUGEFÜGT
+  @@unique([tenantId, marketId, initials])
   @@index([tenantId, marketId, active])
 }
