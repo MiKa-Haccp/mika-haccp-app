@@ -1,37 +1,33 @@
-'use client';
+"use client";
 
 import Link from "next/link";
-import { useDokuSections } from "@/hooks/useDokuSections";
 
-function Dot({ status }: { status: "ok" | "open" }) {
-  const cls = status === "ok" ? "bg-green-500" : "bg-red-500";
-  return <span className={`inline-block h-3 w-3 rounded-full ${cls}`} />;
-}
-
-export default function Page() {
-  const { sections, isLoading, error } = useDokuSections(); // ← lädt /api/doku/sections
-
-  if (isLoading) return <main className="p-6">Lade…</main>;
-  if (error) return <main className="p-6 text-red-600">Fehler beim Laden.</main>;
-
+export default function DokuMetzgereiPage() {
   return (
-    <main className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Dokumentation</h1>
+    <main className="p-6 space-y-4">
+      <h1 className="text-2xl font-bold">Dokumentation · Metzgerei</h1>
+      <p className="text-sm opacity-70">
+        Hier siehst du die Monatsübersichten für die Metzgerei-Formulare.
+      </p>
+
       <ul className="space-y-2">
-        {sections?.map((s: any) => (
-          <li key={s.slug ?? s.id} className="flex items-center gap-3">
-            <Dot status={(s.status as "ok" | "open") ?? "open"} />
-            <Link
-              href={`/dokumentation/${s.slug ?? s.id}`}
-              className="flex-1 rounded-xl border p-4 hover:bg-gray-50"
-            >
-              {s.label}
-            </Link>
-          </li>
-        ))}
-        {(!sections || sections.length === 0) && (
-          <li className="opacity-70">Noch keine Sektionen angelegt.</li>
-        )}
+        <li>
+          <Link
+            href="/dokumentation/metzgerei/taegl-reinigung"
+            className="block rounded-xl border p-4 hover:bg-gray-50"
+          >
+            Tägliche Reinigung
+          </Link>
+        </li>
+
+        <li>
+          <Link
+            href="/dokumentation/metzgerei/woech-reinigung"
+            className="block rounded-xl border p-4 hover:bg-gray-50"
+          >
+            Wöchentliche Reinigung
+          </Link>
+        </li>
       </ul>
     </main>
   );

@@ -1,66 +1,109 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import Link from "next/link";
 
-type Section = { id: string; title: string; number: number; space_id: string };
+function Dot({ ok }: { ok: boolean }) {
+  return (
+    <span
+      className={`inline-block h-3 w-3 rounded-full ${
+        ok ? "bg-green-500" : "bg-red-500"
+      }`}
+    />
+  );
+}
+
+type MetzStatus = {
+  daily: "ok" | "open";
+  weekly: "ok" | "open";
+  quarterly: "ok" | "open";
+};
 
 export default function MetzgereiPage() {
-  const [sections, setSections] = useState<Section[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [marketId, setMarketId] = useState<string | null>(null);
+  const [status, setStatus] = useState<MetzStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
+  // aktiven Markt aus localStorage holen (wie auf den anderen Seiten)
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setLoading(false); return; }
-
-      const { data: mm } = await supabase
-        .from("market_members")
-        .select("market_id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (!mm) { setLoading(false); return; }
-
-      const { data: sp } = await supabase
-        .from("spaces")
-        .select("id")
-        .eq("market_id", mm.market_id)
-        .eq("key", "metzgerei")
-        .maybeSingle();
-      if (!sp) { setLoading(false); return; }
-
-      const { data: sec } = await supabase
-        .from("sections")
-        .select("*")
-        .eq("market_id", mm.market_id)
-        .eq("space_id", sp.id)
-        .order("number", { ascending: true });
-
-      setSections(sec || []);
-      setLoading(false);
-    })();
+    try {
+      const mk = localStorage.getItem("activeMarketId");
+      if (mk) setMarketId(mk);
+    } catch {}
   }, []);
 
-  if (loading) return <main className="p-6">Lade…</main>;
+  useEffect(() => {
+    if (!marketId) return;
+    setLoading(true);
+    setMsg(null);
+    fetch(`/api/metzgerei/status?marketId=${encodeURIComponent(marketId)}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const txt = await res.text();
+          throw new Error(txt || "Fehler beim Laden");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        setStatus(data);
+      })
+      .catch((err) => {
+        console.error(err);
+        setMsg("Konnte Status für Metzgerei nicht laden.");
+      })
+      .finally(() => setLoading(false));
+  }, [marketId]);
+
+  if (!marketId) {
+    return (
+      <main className="p-6">
+        <h1 className="text-2xl font-bold mb-4">Metzgerei</h1>
+        <p className="text-sm text-red-600">
+          Bitte oben in der Navigation zuerst einen Markt auswählen.
+        </p>
+      </main>
+    );
+  }
 
   return (
-    <main className="mx-auto max-w-5xl p-6">
-      <h1 className="text-2xl font-extrabold mb-4"><span className="mika-brand">Metzgerei</span></h1>
+    <main className="p-6 space-y-4">
+      <h1 className="text-2xl font-bold">Metzgerei</h1>
+
+      {loading && <p className="text-sm opacity-70">Lade Status…</p>}
+      {msg && <p className="text-sm text-red-600">{msg}</p>}
+
       <ul className="space-y-2">
-        {sections.map(s => (
-          <li key={s.id}>
-            <a
-              href={`/sections/${s.id}`}
-              className="block rounded-lg border p-3 bg-white hover:bg-mica-bg/10"
-            >
-              {s.number}. {s.title}
-            </a>
-          </li>
-        ))}
-        {!sections.length && <li className="text-gray-500">Keine Einträge vorhanden.</li>}
+        <li className="flex items-center gap-3">
+          <Dot ok={status?.daily === "ok"} />
+          <Link
+            href="/metzgerei/taegl-reinigung"
+            className="flex-1 rounded-xl border p-4 hover:bg-gray-50"
+          >
+            Tägliche Reinigung
+          </Link>
+        </li>
+
+        <li className="flex items-center gap-3">
+          <Dot ok={status?.weekly === "ok"} />
+          <Link
+            href="/metzgerei/woech-reinigung"
+            className="flex-1 rounded-xl border p-4 hover:bg-gray-50"
+          >
+            Wöchentliche Reinigung
+          </Link>
+        </li>
+
+        <li className="flex items-center gap-3">
+          <Dot ok={status?.quarterly === "ok"} />
+          <Link
+            href="/metzgerei/viertel-reinigung"
+            className="flex-1 rounded-xl border p-4 hover:bg-gray-50"
+          >
+            Vierteljährliche Reinigung
+          </Link>
+        </li>
       </ul>
     </main>
   );
 }
-
