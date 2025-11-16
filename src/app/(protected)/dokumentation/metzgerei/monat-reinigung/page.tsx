@@ -1,31 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
-type MonthEntry = {
+type Entry = {
   id: string;
-  date: string; // ISO
+  date: string;
   completedBy: string | null;
-  signatureType: string | null;
   signatureMeta: any;
   data: any;
 };
 
 type Status = "loading" | "ok" | "empty" | "error";
 
-function getDaysInMonth(periodRef: string) {
-  const [yStr, mStr] = periodRef.split("-");
-  const year = Number(yStr);
-  const month = Number(mStr);
-  return new Date(year, month, 0).getDate();
-}
-
-function shiftPeriod(periodRef: string, deltaMonths: number): string {
+function shiftMonth(periodRef: string, delta: number): string {
   const [yStr, mStr] = periodRef.split("-");
   let year = Number(yStr);
   let month = Number(mStr);
 
-  month += deltaMonths;
+  month += delta;
   while (month <= 0) {
     month += 12;
     year -= 1;
@@ -40,16 +32,16 @@ function shiftPeriod(periodRef: string, deltaMonths: number): string {
     .padStart(2, "0")}`;
 }
 
-export default function MetzgereiWoechReinigungDokuPage() {
-  const today = new Date();
-  const initialPeriodRef = today.toISOString().slice(0, 7); // YYYY-MM
+function currentMonthRef(): string {
+  const d = new Date();
+  return d.toISOString().slice(0, 7);
+}
 
+export default function DokuMonatReinigungPage() {
   const [marketId, setMarketId] = useState<string | null>(null);
-  const [periodRef, setPeriodRef] = useState(initialPeriodRef);
-
+  const [periodRef, setPeriodRef] = useState<string>(currentMonthRef());
+  const [entries, setEntries] = useState<Entry[]>([]);
   const [status, setStatus] = useState<Status>("loading");
-  const [daysDone, setDaysDone] = useState<number[]>([]);
-  const [entries, setEntries] = useState<MonthEntry[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -62,7 +54,6 @@ export default function MetzgereiWoechReinigungDokuPage() {
   useEffect(() => {
     if (!marketId) {
       setStatus("empty");
-      setDaysDone([]);
       setEntries([]);
       return;
     }
@@ -73,12 +64,13 @@ export default function MetzgereiWoechReinigungDokuPage() {
       setStatus("loading");
       setErrorMsg(null);
 
+      const params = new URLSearchParams({
+        definitionId: "FORM_METZ_MONAT_REINIGUNG",
+        marketId,
+        periodRef,
+      });
+
       try {
-        const params = new URLSearchParams({
-          definitionId: "FORM_METZ_WOCH_REINIGUNG",
-          marketId,
-          periodRef,
-        });
         const res = await fetch(`/api/forms/entries/month?${params}`, {
           cache: "no-store",
           signal: controller.signal,
@@ -91,25 +83,14 @@ export default function MetzgereiWoechReinigungDokuPage() {
         }
 
         const json = await res.json();
-        if (!json?.ok && json?.ok !== undefined) {
-          setStatus("error");
-          setErrorMsg(json.error ?? "Fehler beim Laden");
-          return;
-        }
-
-        const d: number[] = Array.isArray(json.days) ? json.days : [];
-        const e: MonthEntry[] = Array.isArray(json.entries)
-          ? json.entries
-          : [];
-
-        setDaysDone(d);
+        const e: Entry[] = Array.isArray(json.entries) ? json.entries : [];
         setEntries(e);
         setStatus(e.length > 0 ? "ok" : "empty");
       } catch (err) {
         if (!controller.signal.aborted) {
-          console.error("woech-reinigung doku load error", err);
+          console.error("monat-doku load error", err);
           setStatus("error");
-          setErrorMsg("Netzwerkfehler beim Laden");
+          setErrorMsg("Netzwerkfehler");
         }
       }
     }
@@ -118,29 +99,21 @@ export default function MetzgereiWoechReinigungDokuPage() {
     return () => controller.abort();
   }, [marketId, periodRef]);
 
-  const daysInMonth = useMemo(() => getDaysInMonth(periodRef), [periodRef]);
-  const [year, month] = periodRef.split("-");
-  const titleLabel = useMemo(
-    () =>
-      new Date(Number(year), Number(month) - 1, 1).toLocaleDateString("de-DE", {
-        month: "long",
-        year: "numeric",
-      }),
-    [year, month]
-  );
-
-  const doneSet = useMemo(() => new Set(daysDone ?? []), [daysDone]);
+  const [yearStr, monthStr] = periodRef.split("-");
+  const label = new Date(Number(yearStr), Number(monthStr) - 1, 1).toLocaleDateString("de-DE", {
+    month: "long",
+    year: "numeric",
+  });
 
   return (
     <main className="p-6 space-y-6">
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold">
-            Dokumentation · Metzgerei · wöchentliche Reinigung
+            Dokumentation · Metzgerei · monatliche Reinigung
           </h1>
           <p className="text-sm opacity-70">
-            Monatsübersicht (Nur lesen). Die Daten stammen aus der
-            wöchentlichen Eingabemaske in der Metzgerei.
+            Übersicht der monatlichen Reinigungen (nur lesen).
           </p>
         </div>
 
@@ -148,17 +121,15 @@ export default function MetzgereiWoechReinigungDokuPage() {
           <button
             type="button"
             className="rounded border px-2 py-1 text-sm"
-            onClick={() => setPeriodRef((prev) => shiftPeriod(prev, -1))}
+            onClick={() => setPeriodRef((prev) => shiftMonth(prev, -1))}
           >
             ◀
           </button>
-          <span className="text-sm font-medium w-40 text-center">
-            {titleLabel}
-          </span>
+          <span className="text-sm font-medium w-40 text-center">{label}</span>
           <button
             type="button"
             className="rounded border px-2 py-1 text-sm"
-            onClick={() => setPeriodRef((prev) => shiftPeriod(prev, +1))}
+            onClick={() => setPeriodRef((prev) => shiftMonth(prev, +1))}
           >
             ▶
           </button>
@@ -172,54 +143,30 @@ export default function MetzgereiWoechReinigungDokuPage() {
       )}
 
       <section className="rounded-2xl border p-4">
-        <h2 className="text-sm font-semibold mb-3">
-          Erfasste Tage im Monat (mind. eine wöchentliche Reinigung)
-        </h2>
-        <div className="grid grid-cols-7 gap-1 text-xs">
-          {Array.from({ length: daysInMonth }, (_, i) => {
-            const day = i + 1;
-            const done = doneSet.has(day);
-            return (
-              <div
-                key={day}
-                className={`flex items-center justify-center rounded border py-2 ${
-                  done ? "bg-emerald-100 border-emerald-400" : "bg-white"
-                }`}
-              >
-                <span className="font-medium">{day}</span>
-              </div>
-            );
-          })}
-        </div>
+        <h2 className="text-sm font-semibold mb-3">Einträge</h2>
+
         {status === "loading" && (
-          <p className="mt-3 text-xs opacity-70">Lade Einträge…</p>
-        )}
-        {status === "empty" && (
-          <p className="mt-3 text-xs opacity-70">
-            Für diesen Monat liegen noch keine Einträge vor.
-          </p>
+          <p className="text-xs opacity-70">Lade Einträge…</p>
         )}
         {status === "error" && (
-          <p className="mt-3 text-xs text-red-600">
+          <p className="text-xs text-red-600">
             {errorMsg ?? "Fehler beim Laden."}
           </p>
         )}
-      </section>
-
-      <section className="rounded-2xl border p-4">
-        <h2 className="text-sm font-semibold mb-3">Detailansicht</h2>
-        {entries.length === 0 ? (
+        {status !== "loading" && entries.length === 0 && (
           <p className="text-xs opacity-70">
             Keine Einträge in diesem Monat.
           </p>
-        ) : (
+        )}
+
+        {entries.length > 0 && (
           <div className="overflow-x-auto">
             <table className="min-w-full text-xs">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="text-left px-3 py-1">Datum</th>
                   <th className="text-left px-3 py-1">Erledigt durch</th>
-                  <th className="text-left px-3 py-1">Bemerkungen</th>
+                  <th className="text-left px-3 py-1">Beschreibung</th>
                 </tr>
               </thead>
               <tbody>
@@ -231,9 +178,9 @@ export default function MetzgereiWoechReinigungDokuPage() {
                     <td className="px-3 py-1">
                       {e.completedBy ?? e.signatureMeta?.initials ?? "–"}
                     </td>
-                    <td className="px-3 py-1 max-w-[320px]">
+                    <td className="px-3 py-1 max-w-[340px]">
                       <pre className="whitespace-pre-wrap break-words opacity-80">
-                        {e.data?.bemerkung || "Keine Angaben"}
+                        {e.data?.beschreibung ?? "Keine Daten"}
                       </pre>
                     </td>
                   </tr>
@@ -246,5 +193,3 @@ export default function MetzgereiWoechReinigungDokuPage() {
     </main>
   );
 }
-
-

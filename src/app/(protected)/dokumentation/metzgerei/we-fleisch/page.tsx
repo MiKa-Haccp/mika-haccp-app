@@ -4,11 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 
 type MonthEntry = {
   id: string;
-  date: string; // ISO
+  date: string; // YYYY-MM-DD
   completedBy: string | null;
   signatureType: string | null;
   signatureMeta: any;
-  data: any;
+  data: any; // enthält wareType, lieferant, produkt, menge, temp, bemerkung
 };
 
 type Status = "loading" | "ok" | "empty" | "error";
@@ -16,14 +16,14 @@ type Status = "loading" | "ok" | "empty" | "error";
 function getDaysInMonth(periodRef: string) {
   const [yStr, mStr] = periodRef.split("-");
   const year = Number(yStr);
-  const month = Number(mStr);
+  const month = Number(mStr); // 1–12
   return new Date(year, month, 0).getDate();
 }
 
 function shiftPeriod(periodRef: string, deltaMonths: number): string {
   const [yStr, mStr] = periodRef.split("-");
   let year = Number(yStr);
-  let month = Number(mStr);
+  let month = Number(mStr); // 1–12
 
   month += deltaMonths;
   while (month <= 0) {
@@ -40,7 +40,7 @@ function shiftPeriod(periodRef: string, deltaMonths: number): string {
     .padStart(2, "0")}`;
 }
 
-export default function MetzgereiWoechReinigungDokuPage() {
+export default function MetzgereiWeFleischDokuPage() {
   const today = new Date();
   const initialPeriodRef = today.toISOString().slice(0, 7); // YYYY-MM
 
@@ -52,13 +52,17 @@ export default function MetzgereiWoechReinigungDokuPage() {
   const [entries, setEntries] = useState<MonthEntry[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // aktiven Markt holen
   useEffect(() => {
     try {
       const mk = localStorage.getItem("activeMarketId");
       if (mk) setMarketId(mk);
-    } catch {}
+    } catch {
+      // ignore
+    }
   }, []);
 
+  // Daten laden, wenn Markt oder Monat wechselt
   useEffect(() => {
     if (!marketId) {
       setStatus("empty");
@@ -75,10 +79,11 @@ export default function MetzgereiWoechReinigungDokuPage() {
 
       try {
         const params = new URLSearchParams({
-          definitionId: "FORM_METZ_WOCH_REINIGUNG",
+          definitionId: "FORM_METZ_WE_FLEISCH",
           marketId,
           periodRef,
         });
+
         const res = await fetch(`/api/forms/entries/month?${params}`, {
           cache: "no-store",
           signal: controller.signal,
@@ -91,7 +96,9 @@ export default function MetzgereiWoechReinigungDokuPage() {
         }
 
         const json = await res.json();
-        if (!json?.ok && json?.ok !== undefined) {
+
+        // optionales ok-Flag behandeln
+        if (json?.ok === false) {
           setStatus("error");
           setErrorMsg(json.error ?? "Fehler beim Laden");
           return;
@@ -107,7 +114,7 @@ export default function MetzgereiWoechReinigungDokuPage() {
         setStatus(e.length > 0 ? "ok" : "empty");
       } catch (err) {
         if (!controller.signal.aborted) {
-          console.error("woech-reinigung doku load error", err);
+          console.error("load WE Fleisch doku error", err);
           setStatus("error");
           setErrorMsg("Netzwerkfehler beim Laden");
         }
@@ -136,11 +143,10 @@ export default function MetzgereiWoechReinigungDokuPage() {
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold">
-            Dokumentation · Metzgerei · wöchentliche Reinigung
+            Dokumentation · Metzgerei · Wareneingang Fleisch
           </h1>
           <p className="text-sm opacity-70">
-            Monatsübersicht (Nur lesen). Die Daten stammen aus der
-            wöchentlichen Eingabemaske in der Metzgerei.
+            Monatsübersicht aller erfassten Wareneingänge für Fleisch.
           </p>
         </div>
 
@@ -171,9 +177,10 @@ export default function MetzgereiWoechReinigungDokuPage() {
         </p>
       )}
 
+      {/* Mini-Kalender */}
       <section className="rounded-2xl border p-4">
         <h2 className="text-sm font-semibold mb-3">
-          Erfasste Tage im Monat (mind. eine wöchentliche Reinigung)
+          Tage mit Wareneingang in diesem Monat
         </h2>
         <div className="grid grid-cols-7 gap-1 text-xs">
           {Array.from({ length: daysInMonth }, (_, i) => {
@@ -196,7 +203,7 @@ export default function MetzgereiWoechReinigungDokuPage() {
         )}
         {status === "empty" && (
           <p className="mt-3 text-xs opacity-70">
-            Für diesen Monat liegen noch keine Einträge vor.
+            Für diesen Monat liegen noch keine Wareneingänge vor.
           </p>
         )}
         {status === "error" && (
@@ -206,6 +213,7 @@ export default function MetzgereiWoechReinigungDokuPage() {
         )}
       </section>
 
+      {/* Detailtabelle */}
       <section className="rounded-2xl border p-4">
         <h2 className="text-sm font-semibold mb-3">Detailansicht</h2>
         {entries.length === 0 ? (
@@ -218,26 +226,49 @@ export default function MetzgereiWoechReinigungDokuPage() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="text-left px-3 py-1">Datum</th>
-                  <th className="text-left px-3 py-1">Erledigt durch</th>
+                  <th className="text-left px-3 py-1">Lieferant</th>
+                  <th className="text-left px-3 py-1">Produkt</th>
+                  <th className="text-left px-3 py-1">Menge / Charge</th>
+                  <th className="text-left px-3 py-1">Temp (°C)</th>
+                  <th className="text-left px-3 py-1">Erfasst von</th>
                   <th className="text-left px-3 py-1">Bemerkungen</th>
                 </tr>
               </thead>
               <tbody>
-                {entries.map((e) => (
-                  <tr key={e.id} className="border-t">
-                    <td className="px-3 py-1">
-                      {new Date(e.date).toLocaleDateString("de-DE")}
-                    </td>
-                    <td className="px-3 py-1">
-                      {e.completedBy ?? e.signatureMeta?.initials ?? "–"}
-                    </td>
-                    <td className="px-3 py-1 max-w-[320px]">
-                      <pre className="whitespace-pre-wrap break-words opacity-80">
-                        {e.data?.bemerkung || "Keine Angaben"}
-                      </pre>
-                    </td>
-                  </tr>
-                ))}
+                {entries.map((e) => {
+                  const d = e.data ?? {};
+                  return (
+                    <tr key={e.id} className="border-t">
+                      <td className="px-3 py-1">
+                        {new Date(e.date).toLocaleDateString("de-DE")}
+                      </td>
+                      <td className="px-3 py-1">
+                        {d.lieferant ?? "–"}
+                      </td>
+                      <td className="px-3 py-1">
+                        {d.produkt ?? "–"}
+                      </td>
+                      <td className="px-3 py-1">
+                        {d.menge ?? "–"}
+                      </td>
+                      <td className="px-3 py-1">
+                        {d.temp != null && d.temp !== ""
+                          ? `${d.temp}°C`
+                          : "–"}
+                      </td>
+                      <td className="px-3 py-1">
+                        {e.completedBy ??
+                          e.signatureMeta?.initials ??
+                          "–"}
+                      </td>
+                      <td className="px-3 py-1 max-w-[260px]">
+                        <span className="opacity-80">
+                          {d.bemerkung ?? "–"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -246,5 +277,3 @@ export default function MetzgereiWoechReinigungDokuPage() {
     </main>
   );
 }
-
-

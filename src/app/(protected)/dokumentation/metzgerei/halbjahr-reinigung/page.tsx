@@ -1,68 +1,57 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
-type WeekEntry = {
+type Entry = {
   id: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   completedBy: string | null;
-  signatureType: string | null;
   signatureMeta: any;
   data: any;
 };
 
-type LoadStatus = "loading" | "ok" | "empty" | "error";
+type Status = "loading" | "ok" | "empty" | "error";
 
-/** aktuelle ISO-Woche, z.B. 2025-W46 */
-function getISOWeekRef(d: Date): string {
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const dayNum = date.getUTCDay() || 7; // 1–7, Montag=1
-  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(((+date - +yearStart) / 86400000 + 1) / 7);
-  const year = date.getUTCFullYear();
-  return `${year}-W${weekNo.toString().padStart(2, "0")}`;
+function currentHalfYearRef(): string {
+  const d = new Date();
+  const month = d.getMonth() + 1;
+  const half = month <= 6 ? "H1" : "H2";
+  return `${d.getFullYear()}-${half}`;
 }
 
-/** sehr einfache Week-Shift-Funktion (ignoriert 53-Wochen-Jahre, reicht für uns) */
-function shiftWeekRef(weekRef: string, delta: number): string {
-  const [yearStr, weekPart] = weekRef.split("-W");
-  let year = Number(yearStr);
-  let week = Number(weekPart);
+function shiftHalfYear(periodRef: string, delta: number): string {
+  const [yStr, hStr] = periodRef.split("-");
+  let year = Number(yStr);
+  let half = hStr === "H1" ? 1 : 2;
 
-  week += delta;
-  while (week <= 0) {
+  half += delta;
+  while (half <= 0) {
+    half += 2;
     year -= 1;
-    week += 52;
   }
-  while (week > 52) {
-    week -= 52;
+  while (half > 2) {
+    half -= 2;
     year += 1;
   }
 
-  return `${year}-W${week.toString().padStart(2, "0")}`;
+  const label = half === 1 ? "H1" : "H2";
+  return `${year}-${label}`;
 }
 
-export default function MetzgereiWoechReinigungDokuPage() {
-  const today = new Date();
+export default function DokuHalbjahrReinigungPage() {
   const [marketId, setMarketId] = useState<string | null>(null);
-  const [weekRef, setWeekRef] = useState<string>(getISOWeekRef(today));
-
-  const [status, setStatus] = useState<LoadStatus>("loading");
-  const [entries, setEntries] = useState<WeekEntry[]>([]);
+  const [periodRef, setPeriodRef] = useState<string>(currentHalfYearRef());
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [status, setStatus] = useState<Status>("loading");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // aktiven Markt holen
   useEffect(() => {
     try {
       const mk = localStorage.getItem("activeMarketId");
       if (mk) setMarketId(mk);
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, []);
 
-  // Daten für die Woche laden
   useEffect(() => {
     if (!marketId) {
       setStatus("empty");
@@ -76,14 +65,14 @@ export default function MetzgereiWoechReinigungDokuPage() {
       setStatus("loading");
       setErrorMsg(null);
 
-      try {
-        const params = new URLSearchParams({
-          definitionId: "FORM_METZ_WOCH_REINIGUNG",
-          marketId,
-          weekRef,
-        });
+      const params = new URLSearchParams({
+        definitionId: "FORM_METZ_HALBJ_REINIGUNG",
+        marketId,
+        periodRef,
+      });
 
-        const res = await fetch(`/api/forms/entries/week?${params}`, {
+      try {
+        const res = await fetch(`/api/forms/entries/month?${params}`, {
           cache: "no-store",
           signal: controller.signal,
         });
@@ -95,43 +84,34 @@ export default function MetzgereiWoechReinigungDokuPage() {
         }
 
         const json = await res.json();
-        if (!json?.ok && json?.ok !== undefined) {
-          setStatus("error");
-          setErrorMsg(json.error ?? "Fehler beim Laden");
-          return;
-        }
-
-        const e: WeekEntry[] = Array.isArray(json.entries) ? json.entries : [];
+        const e: Entry[] = Array.isArray(json.entries) ? json.entries : [];
         setEntries(e);
         setStatus(e.length > 0 ? "ok" : "empty");
       } catch (err) {
         if (!controller.signal.aborted) {
-          console.error("woech-doku load error", err);
+          console.error("halbjahr-doku load error", err);
           setStatus("error");
-          setErrorMsg("Netzwerkfehler beim Laden");
+          setErrorMsg("Netzwerkfehler");
         }
       }
     }
 
     load();
     return () => controller.abort();
-  }, [marketId, weekRef]);
+  }, [marketId, periodRef]);
 
-  const weekLabel = useMemo(() => {
-    const [y, wPart] = weekRef.split("-W");
-    return `KW ${Number(wPart)} / ${y}`;
-  }, [weekRef]);
+  const [yearStr, halfLabel] = periodRef.split("-");
+  const titleLabel = `${halfLabel} ${yearStr}`;
 
   return (
     <main className="p-6 space-y-6">
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold">
-            Dokumentation · Metzgerei · wöchentliche Reinigung
+            Dokumentation · Metzgerei · halbjährliche Reinigung
           </h1>
           <p className="text-sm opacity-70">
-            Wochenübersicht – nur lesen. Die Daten kommen aus der Eingabemaske
-            &quot;Metzgerei · wöchentliche Reinigung&quot;.
+            Übersicht der halbjährlichen Grundreinigungen (nur lesen).
           </p>
         </div>
 
@@ -139,17 +119,17 @@ export default function MetzgereiWoechReinigungDokuPage() {
           <button
             type="button"
             className="rounded border px-2 py-1 text-sm"
-            onClick={() => setWeekRef((prev) => shiftWeekRef(prev, -1))}
+            onClick={() => setPeriodRef((prev) => shiftHalfYear(prev, -1))}
           >
             ◀
           </button>
-          <span className="text-sm font-medium w-40 text-center">
-            {weekLabel}
+          <span className="text-sm font-medium w-32 text-center">
+            {titleLabel}
           </span>
           <button
             type="button"
             className="rounded border px-2 py-1 text-sm"
-            onClick={() => setWeekRef((prev) => shiftWeekRef(prev, +1))}
+            onClick={() => setPeriodRef((prev) => shiftHalfYear(prev, +1))}
           >
             ▶
           </button>
@@ -163,32 +143,30 @@ export default function MetzgereiWoechReinigungDokuPage() {
       )}
 
       <section className="rounded-2xl border p-4">
-        <h2 className="text-sm font-semibold mb-3">Einträge dieser Woche</h2>
+        <h2 className="text-sm font-semibold mb-3">Einträge</h2>
 
         {status === "loading" && (
           <p className="text-xs opacity-70">Lade Einträge…</p>
         )}
-
         {status === "error" && (
           <p className="text-xs text-red-600">
             {errorMsg ?? "Fehler beim Laden."}
           </p>
         )}
-
         {status !== "loading" && entries.length === 0 && (
           <p className="text-xs opacity-70">
-            Für diese Woche liegen keine Einträge vor.
+            Keine Einträge in diesem Halbjahr.
           </p>
         )}
 
         {entries.length > 0 && (
-          <div className="overflow-x-auto mt-2">
+          <div className="overflow-x-auto">
             <table className="min-w-full text-xs">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="text-left px-3 py-1">Datum</th>
                   <th className="text-left px-3 py-1">Erledigt durch</th>
-                  <th className="text-left px-3 py-1">Bemerkungen / Daten</th>
+                  <th className="text-left px-3 py-1">Beschreibung</th>
                 </tr>
               </thead>
               <tbody>
@@ -198,15 +176,11 @@ export default function MetzgereiWoechReinigungDokuPage() {
                       {new Date(e.date).toLocaleDateString("de-DE")}
                     </td>
                     <td className="px-3 py-1">
-                      {e.completedBy ??
-                        e.signatureMeta?.initials ??
-                        "–"}
+                      {e.completedBy ?? e.signatureMeta?.initials ?? "–"}
                     </td>
-                    <td className="px-3 py-1 max-w-[320px]">
+                    <td className="px-3 py-1 max-w-[340px]">
                       <pre className="whitespace-pre-wrap break-words opacity-80">
-                        {e.data
-                          ? JSON.stringify(e.data)
-                          : "Keine Daten"}
+                        {e.data?.beschreibung ?? "Keine Daten"}
                       </pre>
                     </td>
                   </tr>
@@ -219,4 +193,3 @@ export default function MetzgereiWoechReinigungDokuPage() {
     </main>
   );
 }
-
