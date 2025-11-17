@@ -222,11 +222,11 @@ export default function MetzgereiPage() {
           href="/metzgerei/we-fleisch"
           className="flex items-center gap-3 rounded-2xl border p-4 hover:bg-gray-50"
         >
-          <div>
-            <div className="font-semibold">Wareneingang Fleisch</div>
-            <div className="text-xs opacity-70">
-              Erfassung von Lieferungen / Temperaturen im Wareneingang Fleisch.
-            </div>
+          <div className="flex flex-col">
+            <span className="font-semibold">Wareneingang Fleisch</span>
+            <span className="text-xs opacity-70">
+              Erfassung von Lieferungen (Temperatur, Freigabe, Bemerkung).
+            </span>
           </div>
         </Link>
 

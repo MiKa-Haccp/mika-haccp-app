@@ -4,11 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 
 type MonthEntry = {
   id: string;
-  date: string; // YYYY-MM-DD
+  date: string; // ISO
   completedBy: string | null;
   signatureType: string | null;
   signatureMeta: any;
-  data: any; // enthält wareType, lieferant, produkt, menge, temp, bemerkung
+  data: any;
 };
 
 type Status = "loading" | "ok" | "empty" | "error";
@@ -23,7 +23,7 @@ function getDaysInMonth(periodRef: string) {
 function shiftPeriod(periodRef: string, deltaMonths: number): string {
   const [yStr, mStr] = periodRef.split("-");
   let year = Number(yStr);
-  let month = Number(mStr); // 1–12
+  let month = Number(mStr);
 
   month += deltaMonths;
   while (month <= 0) {
@@ -40,7 +40,7 @@ function shiftPeriod(periodRef: string, deltaMonths: number): string {
     .padStart(2, "0")}`;
 }
 
-export default function MetzgereiWeFleischDokuPage() {
+export default function DokuWeFleischPage() {
   const today = new Date();
   const initialPeriodRef = today.toISOString().slice(0, 7); // YYYY-MM
 
@@ -79,9 +79,9 @@ export default function MetzgereiWeFleischDokuPage() {
 
       try {
         const params = new URLSearchParams({
-          definitionId: "FORM_METZ_WE_FLEISCH",
+          definitionId: "FORM_METZ_WE_FLEISCH",   // 👈 MUSS zur FormDefinition.id passen
           marketId,
-          periodRef,
+          periodRef,                         // z.B. "2025-11"
         });
 
         const res = await fetch(`/api/forms/entries/month?${params}`, {
@@ -96,9 +96,7 @@ export default function MetzgereiWeFleischDokuPage() {
         }
 
         const json = await res.json();
-
-        // optionales ok-Flag behandeln
-        if (json?.ok === false) {
+        if (!json?.ok && json?.ok !== undefined) {
           setStatus("error");
           setErrorMsg(json.error ?? "Fehler beim Laden");
           return;
@@ -114,7 +112,7 @@ export default function MetzgereiWeFleischDokuPage() {
         setStatus(e.length > 0 ? "ok" : "empty");
       } catch (err) {
         if (!controller.signal.aborted) {
-          console.error("load WE Fleisch doku error", err);
+          console.error("load month WE Fleisch error", err);
           setStatus("error");
           setErrorMsg("Netzwerkfehler beim Laden");
         }
@@ -136,7 +134,10 @@ export default function MetzgereiWeFleischDokuPage() {
     [year, month]
   );
 
-  const doneSet = useMemo(() => new Set(daysDone ?? []), [daysDone]);
+  const doneSet = useMemo(
+    () => new Set(daysDone ?? []),
+    [daysDone]
+  );
 
   return (
     <main className="p-6 space-y-6">
@@ -146,7 +147,7 @@ export default function MetzgereiWeFleischDokuPage() {
             Dokumentation · Metzgerei · Wareneingang Fleisch
           </h1>
           <p className="text-sm opacity-70">
-            Monatsübersicht aller erfassten Wareneingänge für Fleisch.
+            Monatsübersicht aller dokumentierten Wareneingänge (Fleisch).
           </p>
         </div>
 
@@ -177,10 +178,10 @@ export default function MetzgereiWeFleischDokuPage() {
         </p>
       )}
 
-      {/* Mini-Kalender */}
+      {/* Kalender-ähnliche Übersicht */}
       <section className="rounded-2xl border p-4">
         <h2 className="text-sm font-semibold mb-3">
-          Tage mit Wareneingang in diesem Monat
+          Erledigte Tage im Monat
         </h2>
         <div className="grid grid-cols-7 gap-1 text-xs">
           {Array.from({ length: daysInMonth }, (_, i) => {
@@ -203,7 +204,7 @@ export default function MetzgereiWeFleischDokuPage() {
         )}
         {status === "empty" && (
           <p className="mt-3 text-xs opacity-70">
-            Für diesen Monat liegen noch keine Wareneingänge vor.
+            Für diesen Monat liegen noch keine Einträge vor.
           </p>
         )}
         {status === "error" && (
@@ -213,7 +214,7 @@ export default function MetzgereiWeFleischDokuPage() {
         )}
       </section>
 
-      {/* Detailtabelle */}
+      {/* Detailtabelle der Einträge */}
       <section className="rounded-2xl border p-4">
         <h2 className="text-sm font-semibold mb-3">Detailansicht</h2>
         {entries.length === 0 ? (
@@ -226,49 +227,28 @@ export default function MetzgereiWeFleischDokuPage() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="text-left px-3 py-1">Datum</th>
-                  <th className="text-left px-3 py-1">Lieferant</th>
-                  <th className="text-left px-3 py-1">Produkt</th>
-                  <th className="text-left px-3 py-1">Menge / Charge</th>
-                  <th className="text-left px-3 py-1">Temp (°C)</th>
-                  <th className="text-left px-3 py-1">Erfasst von</th>
-                  <th className="text-left px-3 py-1">Bemerkungen</th>
+                  <th className="text-left px-3 py-1">Erfasst durch</th>
+                  <th className="text-left px-3 py-1">Daten</th>
                 </tr>
               </thead>
               <tbody>
-                {entries.map((e) => {
-                  const d = e.data ?? {};
-                  return (
-                    <tr key={e.id} className="border-t">
-                      <td className="px-3 py-1">
-                        {new Date(e.date).toLocaleDateString("de-DE")}
-                      </td>
-                      <td className="px-3 py-1">
-                        {d.lieferant ?? "–"}
-                      </td>
-                      <td className="px-3 py-1">
-                        {d.produkt ?? "–"}
-                      </td>
-                      <td className="px-3 py-1">
-                        {d.menge ?? "–"}
-                      </td>
-                      <td className="px-3 py-1">
-                        {d.temp != null && d.temp !== ""
-                          ? `${d.temp}°C`
-                          : "–"}
-                      </td>
-                      <td className="px-3 py-1">
-                        {e.completedBy ??
-                          e.signatureMeta?.initials ??
-                          "–"}
-                      </td>
-                      <td className="px-3 py-1 max-w-[260px]">
-                        <span className="opacity-80">
-                          {d.bemerkung ?? "–"}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {entries.map((e) => (
+                  <tr key={e.id} className="border-t">
+                    <td className="px-3 py-1">
+                      {new Date(e.date).toLocaleDateString("de-DE")}
+                    </td>
+                    <td className="px-3 py-1">
+                      {e.signatureMeta?.initials ??
+                        e.completedBy ??
+                        "–"}
+                    </td>
+                    <td className="px-3 py-1 max-w-[320px]">
+                      <pre className="whitespace-pre-wrap break-words opacity-80">
+                        {e.data ? JSON.stringify(e.data) : "Keine Daten"}
+                      </pre>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -277,3 +257,5 @@ export default function MetzgereiWeFleischDokuPage() {
     </main>
   );
 }
+
+
