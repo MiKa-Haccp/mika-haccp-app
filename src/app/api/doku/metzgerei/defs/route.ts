@@ -27,7 +27,7 @@ export async function GET() {
   } catch (e) {
     console.error("doku.metzgerei.defs error", e);
     return NextResponse.json(
-      { ok: false, error: "Server error" beim Laden der Formulare },
+      { ok: false, error: "Server error beim Laden der Formulare" },
       { status: 500 }
     );
   }
