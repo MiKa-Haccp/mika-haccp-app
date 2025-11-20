@@ -8,6 +8,8 @@ type FormDef = {
   sectionKey: string | null;
   period: string | null;
   active: boolean;
+  template?: string | null;
+  marketId?: string | null;
 };
 
 type Status = "loading" | "ok" | "empty" | "error";
@@ -22,10 +24,19 @@ const PERIOD_OPTIONS = [
   { value: "year", label: "jährlich" },
 ];
 
+// 🔹 NEU: Formular-Typen (Templates)
+const TEMPLATE_OPTIONS = [
+  { value: "generic_check", label: "Einfaches Häkchenformular" },
+  { value: "cleaning_basic", label: "Reinigung (Checkliste)" },
+  { value: "wareneingang", label: "Wareneingang" },
+  { value: "simple_list", label: "Einfache Liste" },
+];
+
 export default function MetzgereiFormsAdminPage() {
   const [items, setItems] = useState<FormDef[]>([]);
   const [status, setStatus] = useState<Status>("loading");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [marketId, setMarketId] = useState<string | null>(null);
 
   // Formular-Status
   const [editId, setEditId] = useState<string | null>(null);
@@ -33,6 +44,7 @@ export default function MetzgereiFormsAdminPage() {
   const [label, setLabel] = useState("");
   const [sectionKey, setSectionKey] = useState("");
   const [period, setPeriod] = useState<string>("");
+  const [template, setTemplate] = useState<string>("generic_check"); // 🔹 NEU
   const [active, setActive] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -41,6 +53,8 @@ export default function MetzgereiFormsAdminPage() {
     setStatus("loading");
     setErrorMsg(null);
     try {
+      const params = new URLSearchParams();
+      if (marketId) params.set("marketId", marketId); //  
       const res = await fetch("/api/admin/forms/metzgerei", { cache: "no-store" });
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
@@ -56,7 +70,7 @@ export default function MetzgereiFormsAdminPage() {
 
   useEffect(() => {
     reload();
-  }, []);
+  }, [marketId]); // 👈 hängt jetzt von marketId ab
 
   function resetForm() {
     setEditId(null);
@@ -64,6 +78,7 @@ export default function MetzgereiFormsAdminPage() {
     setLabel("");
     setSectionKey("");
     setPeriod("");
+    setTemplate("generic_check"); // 🔹 NEU
     setActive(true);
     setMsg(null);
   }
@@ -74,6 +89,7 @@ export default function MetzgereiFormsAdminPage() {
     setLabel(def.label);
     setSectionKey(def.sectionKey ?? "");
     setPeriod(def.period ?? "");
+    setTemplate(def.template ?? "generic_check"); // 🔹 NEU
     setActive(def.active);
     setMsg(null);
   }
@@ -98,6 +114,8 @@ export default function MetzgereiFormsAdminPage() {
           sectionKey,
           period: period || null,
           active,
+          template, // 🔹 NEU
+          marketId: marketId || null,   // 👈 WICHTIG
         }),
       });
 
@@ -207,6 +225,25 @@ export default function MetzgereiFormsAdminPage() {
             </select>
           </label>
 
+          {/* 🔹 NEU: Formular-Typ */}
+          <label className="text-sm">
+            Formular-Typ
+            <select
+              className="mt-1 w-full rounded border px-3 py-2 text-sm"
+              value={template}
+              onChange={(e) => setTemplate(e.target.value)}
+            >
+              {TEMPLATE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <span className="block text-[11px] opacity-60 mt-1">
+              Steuert später, welche Felder das Formular hat (Reinigung, Wareneingang, Liste…)
+            </span>
+          </label>
+
           <label className="text-sm inline-flex items-center gap-2">
             <input
               type="checkbox"
@@ -250,7 +287,9 @@ export default function MetzgereiFormsAdminPage() {
                   <th className="text-left px-3 py-2">Name</th>
                   <th className="text-left px-3 py-2">Slug</th>
                   <th className="text-left px-3 py-2">Zeitraum</th>
+                  <th className="text-left px-3 py-2">Typ</th>
                   <th className="text-left px-3 py-2">Aktiv</th>
+                  <th className="text-left px-3 py-2">Scope</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
@@ -266,7 +305,13 @@ export default function MetzgereiFormsAdminPage() {
                       {def.period ?? <span className="opacity-60">–</span>}
                     </td>
                     <td className="px-3 py-1">
+                      {def.template ?? <span className="opacity-60">generic_check</span>}
+                    </td>
+                    <td className="px-3 py-1">
                       {def.active ? "✔" : <span className="opacity-60">inaktiv</span>}
+                    </td>
+                    <td className="px-3 py-1">
+                      {def.marketId ? "Markt-spezifisch" : "Global"}
                     </td>
                     <td className="px-3 py-1 text-right">
                       <button
@@ -287,3 +332,4 @@ export default function MetzgereiFormsAdminPage() {
     </main>
   );
 }
+

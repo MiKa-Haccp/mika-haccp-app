@@ -1,295 +1,282 @@
 "use client";
 
-import { use, useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
-const DEF_MAP: Record<string, string> = {
-  "taegl-reinigung": "FORM_METZ_TAEGL_REINIGUNG",
-  // später: weitere Formulare wie "viertel-reinigung": "FORM_METZ_VIERTEL_REINIGUNG"
+type FormDef = {
+  id: string;
+  sectionKey: string | null;
+  label: string;
+  period: string | null;
 };
 
-const TENANT = "T1";
+type LoadStatus = "loading" | "noMarket" | "notfound" | "error" | "ok";
 
-function todayISO() {
-  const d = new Date();
-  return d.toISOString().slice(0, 10); // "YYYY-MM-DD"
-}
+export default function MetzgereiDynamicFormPage() {
+  const params = useParams<{ slug: string }>();
+  const slug = String(params.slug || "").trim();
 
-function periodRefFromDate(dateISO: string) {
-  // Für tägliche Formulare reicht "YYYY-MM"
-  return dateISO.slice(0, 7);
-}
-
-// Hilfsfunktion für Monatskalender-Gitter
-function getMonthDays(dateISO: string) {
-  const [yStr, mStr] = dateISO.split("-"); // "YYYY-MM-DD"
-  const year = Number(yStr);
-  const month = Number(mStr); // 1–12
-
-  // Erster Tag des Monats
-  const first = new Date(Date.UTC(year, month - 1, 1));
-  // Letzter Tag: nächster Monat, Tag 0
-  const last = new Date(Date.UTC(year, month, 0));
-  const totalDays = last.getUTCDate();
-
-  const days: { day: number; iso: string }[] = [];
-  for (let d = 1; d <= totalDays; d++) {
-    const date = new Date(Date.UTC(year, month - 1, d));
-    const iso = date.toISOString().slice(0, 10);
-    days.push({ day: d, iso });
-  }
-  return days;
-}
-
-export default function MetzgereiFormPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>; // Next 16
-}) {
-  const { slug } = use(params);
-  const definitionId = DEF_MAP[slug];
-
-  // aktiver Markt aus localStorage (wie in deiner NavBar)
   const [marketId, setMarketId] = useState<string | null>(null);
-  const [date, setDate] = useState(todayISO());
-  const [temp, setTemp] = useState(""); // Beispiel-Feld
+  const [def, setDef] = useState<FormDef | null>(null);
+  const [status, setStatus] = useState<LoadStatus>("loading");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // einfache Eingabemaske
+  const [date, setDate] = useState<string>(() =>
+    new Date().toISOString().slice(0, 10)
+  ); // YYYY-MM-DD
+  const [done, setDone] = useState<boolean>(true);
   const [initials, setInitials] = useState("");
   const [pin, setPin] = useState("");
-
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  // Monatsstatus: welche Tage haben Eintrag?
-  const [monthDaysDone, setMonthDaysDone] = useState<Record<string, boolean>>(
-    {}
-  );
-  const periodRef = useMemo(() => periodRefFromDate(date), [date]);
-
+  // 1) aktiven Markt laden
   useEffect(() => {
     try {
       const mk = localStorage.getItem("activeMarketId");
-      if (mk) setMarketId(mk);
-    } catch {}
+      if (mk) {
+        setMarketId(mk);
+      } else {
+        setStatus("noMarket");
+      }
+    } catch {
+      setStatus("error");
+      setErrorMsg("Konnte Markt nicht ermitteln.");
+    }
   }, []);
 
-  // Monatsstatus laden, wenn Markt + Definition + periodRef da sind
+  // 2) passende FormDefinition über slug finden
   useEffect(() => {
-    async function loadMonth() {
-      if (!marketId || !definitionId) return;
+    if (!slug) return;
+    if (!marketId) return; // warten, bis Market da ist / oder noMarket
+
+    let cancelled = false;
+
+    async function loadDef() {
+      setStatus("loading");
+      setErrorMsg(null);
+
       try {
-        const res = await fetch(
-          `/api/forms/entries/month?definitionId=${encodeURIComponent(
-            definitionId
-          )}&marketId=${encodeURIComponent(
-            marketId
-          )}&periodRef=${encodeURIComponent(periodRef)}`,
-          { cache: "no-store" }
-        );
+        const res = await fetch("/api/doku/metzgerei/defs", {
+          cache: "no-store",
+        });
+        if (!res.ok) throw new Error(await res.text());
         const json = await res.json();
-        if (!json?.ok) {
-          console.warn("month load error", json?.error);
-          setMonthDaysDone({});
-          return;
+        const defs: FormDef[] = json?.items ?? [];
+
+        const found =
+          defs.find(
+            (d) => (d.sectionKey || "").trim() === slug
+          ) ||
+          defs.find((d) => d.id === slug);
+
+        if (cancelled) return;
+
+        if (!found) {
+          setStatus("notfound");
+          setDef(null);
+        } else {
+          setDef(found);
+          setStatus("ok");
         }
-        const map: Record<string, boolean> = {};
-        for (const e of json.entries as { date: string }[]) {
-          map[e.date] = true;
-        }
-        setMonthDaysDone(map);
       } catch (e) {
-        console.error(e);
-        setMonthDaysDone({});
+        if (cancelled) return;
+        console.error("load metzgerei def by slug error", e);
+        setStatus("error");
+        setErrorMsg("Formular konnte nicht geladen werden.");
       }
     }
-    loadMonth();
-  }, [marketId, definitionId, periodRef]);
 
-  async function onSave(e: React.FormEvent) {
+    loadDef();
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, marketId]);
+
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!def || !marketId) return;
+
     setMsg(null);
-
-    if (!definitionId) {
-      setMsg("Formular nicht bekannt (slug).");
-      return;
-    }
-    if (!marketId) {
-      setMsg("Kein Markt gewählt.");
-      return;
-    }
-    if (!initials || !pin) {
-      setMsg("Initialen und PIN eingeben.");
-      return;
-    }
-
     setSaving(true);
+
     try {
-      const payload = {
-        definitionId,
-        marketId,
-        periodRef,
-        date,
-        data: {
-          // hier deine konkreten Felder
-          temp,
-          // später: checkboxes, text, usw.
-        },
-        sign: { initials, pin },
-      };
+      if (!initials || !pin) {
+        setMsg("Initialen und PIN sind erforderlich.");
+        setSaving(false);
+        return;
+      }
+
+      // periodRef = Jahr-Monat für dieses Datum
+      const periodRef = date.slice(0, 7); // "YYYY-MM"
 
       const res = await fetch("/api/forms/entries/upsert", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          marketId,
+          definitionId: def.id,
+          periodRef,
+          date,
+          data: {
+            done,
+          },
+          sign: {
+            initials,
+            pin,
+          },
+        }),
       });
-      const json = await res.json();
 
-      if (!res.ok || !json?.ok) {
-        setMsg(json?.error ?? "Speichern fehlgeschlagen");
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok || json.ok === false) {
+        setMsg(
+          json?.error ||
+            `Speichern fehlgeschlagen (${res.status}).`
+        );
       } else {
-        setMsg("Gespeichert ✔");
-        setPin("");
-        // aktuell ausgewählter Tag: als erledigt markieren
-        setMonthDaysDone((old) => ({ ...old, [date]: true }));
+        setMsg("Eintrag gespeichert ✅");
       }
     } catch (err) {
-      console.error(err);
-      setMsg("Serverfehler");
+      console.error("save metzgerei entry error", err);
+      setMsg("Serverfehler beim Speichern.");
     } finally {
       setSaving(false);
     }
   }
 
-  // Monatstage für den Minikalender
-  const monthDays = useMemo(() => getMonthDays(date), [date]);
+  // --- Render-Logik ---
 
+  if (status === "noMarket") {
+    return (
+      <main className="p-6">
+        <h1 className="text-xl font-bold mb-2">Metzgerei · Formular</h1>
+        <p className="text-sm text-red-600">
+          Bitte oben in der Navigation zuerst einen Markt auswählen.
+        </p>
+      </main>
+    );
+  }
+
+  if (status === "loading") {
+    return (
+      <main className="p-6">
+        <h1 className="text-xl font-bold mb-2">Metzgerei · Formular</h1>
+        <p className="text-sm">Lade Formular…</p>
+      </main>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <main className="p-6">
+        <h1 className="text-xl font-bold mb-2">Metzgerei · Formular</h1>
+        <p className="text-sm text-red-600">
+          {errorMsg ?? "Fehler beim Laden des Formulars."}
+        </p>
+      </main>
+    );
+  }
+
+  if (status === "notfound" || !def) {
+    return (
+      <main className="p-6">
+        <h1 className="text-xl font-bold mb-2">Metzgerei · Formular</h1>
+        <p className="text-sm text-red-600">
+          Formular nicht bekannt (Slug: <code>{slug}</code>).
+        </p>
+        <p className="text-xs opacity-70 mt-2">
+          Prüfe in der Admin-Ansicht unter{" "}
+          <code>Dokumentation &gt; Admin &gt; Metzgerei-Formulare</code>, ob
+          ein Eintrag mit passendem <code>sectionKey</code> existiert.
+        </p>
+      </main>
+    );
+  }
+
+  // ab hier: Formular ist bekannt
   return (
-    <main className="p-6 space-y-6">
-      <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold">
-            Metzgerei ·{" "}
-            {slug === "taegl-reinigung" ? "Tägliche Reinigung" : slug}
-          </h1>
-          <p className="text-sm opacity-70">
-            Tägliches Formular mit PIN-Bestätigung.
-          </p>
-        </div>
-        <div className="text-sm">
-          <div>Markt: {marketId ?? "kein Markt gewählt"}</div>
-          <div>Monat: {periodRef}</div>
-        </div>
+    <main className="p-6 space-y-4">
+      <header>
+        <h1 className="text-2xl font-bold mb-1">
+          Metzgerei · {def.label}
+        </h1>
+        <p className="text-sm opacity-70">
+          Einfacher Eintrag für dieses Formular. Die gespeicherten Daten
+          erscheinen in der Dokumentation unter{" "}
+          <code>Dokumentation &gt; Metzgerei</code>.
+        </p>
       </header>
 
-      {/* Minikalender */}
-      <section className="rounded-2xl border p-4">
-        <h2 className="text-sm font-semibold mb-2">Monatsübersicht</h2>
-        <div className="grid grid-cols-7 gap-1 text-center text-xs mb-2">
-          <span>Mo</span>
-          <span>Di</span>
-          <span>Mi</span>
-          <span>Do</span>
-          <span>Fr</span>
-          <span>Sa</span>
-          <span>So</span>
-        </div>
-        {/* einfache Variante: nur Gitter nach Tagnummer, ohne echte Wochentags-Verschiebung */}
-        <div className="grid grid-cols-7 gap-1 text-xs">
-          {monthDays.map((d) => {
-            const done = monthDaysDone[d.iso];
-            return (
-              <button
-                key={d.iso}
-                type="button"
-                className={`aspect-square rounded-full flex items-center justify-center border ${
-                  d.iso === date
-                    ? "border-black"
-                    : "border-gray-200"
-                } ${done ? "bg-green-200" : "bg-red-100"}`}
-                onClick={() => setDate(d.iso)}
-              >
-                {d.day}
-              </button>
-            );
-          })}
-        </div>
-        <p className="mt-2 text-xs opacity-70">
-          Grün = erledigt, Rot = offen. Klick auf einen Tag, um ihn zu
-          bearbeiten.
-        </p>
-      </section>
-
-      {/* Formular für ausgewählten Tag */}
-      <form
-        onSubmit={onSave}
-        className="max-w-xl space-y-3 rounded-2xl border p-4"
-      >
-        <div className="grid gap-2">
-          <label className="text-sm">
+      <section className="rounded-2xl border p-4 space-y-4">
+        <form onSubmit={onSubmit} className="space-y-4 max-w-md">
+          <label className="text-sm block">
             Datum
             <input
               type="date"
-              className="mt-1 w-full rounded border px-3 py-2"
+              className="mt-1 w-full rounded border px-3 py-2 text-sm"
               value={date}
               onChange={(e) => setDate(e.target.value)}
+              required
             />
           </label>
 
-          <label className="text-sm">
-            Temperatur (°C) – Beispiel-Feld
+          <label className="text-sm inline-flex items-center gap-2">
             <input
-              type="number"
-              step="0.1"
-              className="mt-1 w-full rounded border px-3 py-2"
-              value={temp}
-              onChange={(e) => setTemp(e.target.value)}
-              placeholder="z. B. 4.0"
+              type="checkbox"
+              checked={done}
+              onChange={(e) => setDone(e.target.checked)}
             />
+            Vorgang erledigt / Formular für diesen Tag als erledigt markieren
           </label>
 
-          {/* HIER kommen später deine echten Checkboxen etc. */}
+          <div className="border-t pt-3 mt-3">
+            <p className="text-xs font-semibold mb-2">
+              Unterschrift (Initialen + PIN)
+            </p>
 
-          <div className="grid sm:grid-cols-2 gap-2">
-            <label className="text-sm">
-              Initialen
-              <input
-                className="mt-1 w-full rounded border px-3 py-2"
-                value={initials}
-                onChange={(e) =>
-                  setInitials(e.target.value.toUpperCase())
-                }
-                placeholder="z. B. MD"
-                required
-              />
-            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm">
+                Initialen
+                <input
+                  className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                  value={initials}
+                  onChange={(e) => setInitials(e.target.value)}
+                  maxLength={3}
+                  required
+                />
+              </label>
 
-            <label className="text-sm">
-              PIN
-              <input
-                type="password"
-                className="mt-1 w-full rounded border px-3 py-2"
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                placeholder="4–6-stellig"
-                required
-              />
-            </label>
+              <label className="text-sm">
+                PIN
+                <input
+                  type="password"
+                  className="mt-1 w-full rounded border px-3 py-2 text-sm"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  required
+                />
+              </label>
+            </div>
           </div>
-        </div>
 
-        <div className="pt-2 flex items-center gap-3">
           <button
-            className="rounded-lg bg-black px-4 py-2 text-white disabled:opacity-50"
-            disabled={saving || !marketId}
+            type="submit"
+            className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
+            disabled={saving}
           >
-            {saving ? "Speichere…" : "Speichern"}
+            {saving ? "Speichere…" : "Eintrag speichern"}
           </button>
-          {msg && <span className="text-sm opacity-80">{msg}</span>}
-          {!marketId && (
-            <span className="text-sm text-red-600">
-              Bitte oben in der Navi einen Markt wählen.
-            </span>
+
+          {msg && (
+            <p className="mt-2 text-sm">
+              {msg}
+            </p>
           )}
-        </div>
-      </form>
+        </form>
+      </section>
     </main>
   );
 }

@@ -1,76 +1,82 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { ShieldIcon } from "@/components/Brand";
-import { isAdmin } from "@/lib/currentContext";
-import { CheckSquare, FileText, Users } from "lucide-react";
 
-// Next 16: viewport separat exportieren
-export const viewport = {
-  width: "device-width",
-  initialScale: 1,
-};
-
-function CTA(props: { href: string; label: string; solid?: boolean; icon?: React.ComponentType<any> }) {
-  const { href, label, solid = false, icon: Icon = CheckSquare } = props;
-
-  const box = solid
-    ? "flex items-center gap-3 rounded-2xl px-5 py-4 mika-btn shadow hover:shadow-lg transition"
-    : "flex items-center gap-3 rounded-2xl px-5 py-4 mika-card shadow hover:shadow-lg transition";
-
-  const iconColor = solid ? "text-white" : "mika-brand";
-  const textColor = solid ? "text-white font-semibold" : "mika-brand font-semibold";
-
+export default function OverviewPage() {
   return (
-    <Link href={href} className={box}>
-      <Icon className={`${iconColor} w-5 h-5`} />
-      <span className={textColor}>{label}</span>
-    </Link>
-  );
-}
+    <main className="p-6 space-y-6">
+      <header>
+        <h1 className="text-2xl font-bold mb-1">Übersicht</h1>
+        <p className="text-sm opacity-70">
+          Wähle einen Bereich aus: Allgemeine Dokumente, Markt, Metzgerei oder
+          gehe direkt in die Dokumentation bzw. den Admin-Bereich.
+        </p>
+      </header>
 
-export default function ProtectedHomePage() {
-  const [admin, setAdmin] = useState(false);
-
-  useEffect(() => {
-    (async () => setAdmin(await isAdmin()))();
-  }, []);
-
-  return (
-    <main className="mx-auto max-w-5xl px-4 py-12">
-      <section className="mika-frame mb-10">
-        <div className="flex items-start gap-4 mb-6">
-          <div className="mika-brand">
-            <ShieldIcon className="h-16 w-16" />
-          </div>
-          <div className="mika-brand">
-            <h1 className="text-4xl font-extrabold leading-tight">MiKa HACCP</h1>
-            <p className="mt-2 opacity-70 mika-ink">
-              Ihr digitaler Partner für Lebensmittelsicherheit
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Link
+          href="/allgemein"
+          className="rounded-2xl border p-4 hover:bg-gray-50 flex flex-col justify-between"
+        >
+          <div>
+            <h2 className="text-lg font-semibold">Allgemein</h2>
+            <p className="text-sm opacity-70 mt-1">
+              Übergreifende Formulare und Dokumente, z.&nbsp;B.
+              Betriebsbegehungen, Unterweisungen, Schulungen.
             </p>
           </div>
-        </div>
+        </Link>
 
-        <div className="grid gap-4 sm:max-w-md">
-          {/* Hauptbereiche */}
-          <CTA href="/metzgerei" label="Metzgerei ToDo's" solid icon={CheckSquare} />
-          <CTA href="/markt" label="Markt ToDo's" icon={CheckSquare} />
-          <CTA href="/dokumentation" label="Dokumentation" icon={FileText} />
+        <Link
+          href="/markt"
+          className="rounded-2xl border p-4 hover:bg-gray-50 flex flex-col justify-between"
+        >
+          <div>
+            <h2 className="text-lg font-semibold">Markt</h2>
+            <p className="text-sm opacity-70 mt-1">
+              Checklisten und Nachweise für den kompletten Marktbereich.
+            </p>
+          </div>
+        </Link>
 
-          {/* Admin-Bereich nur anzeigen, wenn Admin */}
-          {admin && (
-            <>
-              <div className="h-px bg-gray-200 my-2" />
-              <CTA href="/dokumentation/admin" label="Dokumentation – Admin" icon={FileText} />
-              <CTA href="/admin/invite" label="Benutzer einladen" icon={Users} />
-              {/* Falls du die Einladungsseite für Markt-Links nutzt: */}
-              {/* <CTA href="/markt/einladen" label="Einladungslinks (Markt)" icon={Users} /> */}
-            </>
-          )}
-        </div>
+        <Link
+          href="/metzgerei"
+          className="rounded-2xl border p-4 hover:bg-gray-50 flex flex-col justify-between"
+        >
+          <div>
+            <h2 className="text-lg font-semibold">Metzgerei</h2>
+            <p className="text-sm opacity-70 mt-1">
+              Tägliche/Wöchentliche Reinigung, Wareneingang, Temperaturen usw.
+            </p>
+          </div>
+        </Link>
+
+        <Link
+          href="/dokumentation"
+          className="rounded-2xl border p-4 hover:bg-gray-50 flex flex-col justify-between"
+        >
+          <div>
+            <h2 className="text-lg font-semibold">Dokumentation</h2>
+            <p className="text-sm opacity-70 mt-1">
+              Monats- und Jahresübersichten für alle Formulare – das, was du
+              dem Gesundheitsamt zeigst.
+            </p>
+          </div>
+        </Link>
+
+        <Link
+          href="/admin"
+          className="rounded-2xl border p-4 hover:bg-gray-50 flex flex-col justify-between"
+        >
+          <div>
+            <h2 className="text-lg font-semibold">Admin</h2>
+            <p className="text-sm opacity-70 mt-1">
+              Personal & PINs, Doku-Sektionen, Formulare und später
+              Markt-Einladungen. Nur für Admin/Superadmin.
+            </p>
+          </div>
+        </Link>
       </section>
     </main>
   );
 }
-

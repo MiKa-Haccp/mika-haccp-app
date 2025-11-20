@@ -18,29 +18,35 @@ export default function NavBar() {
   }, []);
 
   const onSelect = (marketId: string) => {
-    try { 
-      localStorage.setItem("activeMarketId", marketId);     
-      localStorage.setItem("currentMarketId", marketId);  // kompatibler Key fürs restliche  
-      } catch {}
-    window.location.reload(); // neu laden, damit Context überall greift
+    try {
+      localStorage.setItem("activeMarketId", marketId);
+      localStorage.setItem("currentMarketId", marketId); // kompatibel mit älterem Code
+    } catch {}
+    window.location.reload();
   };
 
   const activeLabel = useMemo(() => {
-    const found = markets.find(m => m.id === active);
-    return found?.name ?? (active ?? "Kein Markt");
+    const found = markets.find((m) => m.id === active);
+    return found?.name ?? active ?? "Kein Markt";
   }, [markets, active]);
 
   return (
     <header className="fixed top-0 inset-x-0 z-50 bg-white/80 backdrop-blur border-b">
       <div className="mx-auto max-w-6xl px-4 h-16 flex items-center justify-between">
-        <nav className="flex items-center gap-6">
+        <nav className="flex items-center gap-6 text-sm">
+          <Link href="/">Übersicht</Link>
+          <Link href="/allgemein">Allgemein</Link>
           <Link href="/markt">Markt</Link>
           <Link href="/metzgerei">Metzgerei</Link>
           <Link href="/dokumentation">Dokumentation</Link>
-          {admin && <Link href="/admin" className="font-semibold">Admin</Link>}
+          {admin && (
+            <Link href="/admin" className="font-semibold">
+              Admin
+            </Link>
+          )}
         </nav>
 
-        {/* Admin-only Markt-Switcher (rechts) */}
+        {/* Markt-Switcher (nur für Admin, wie gehabt) */}
         {admin && (
           <div className="flex items-center gap-2">
             <span className="text-sm opacity-70 hidden sm:inline">Markt:</span>
@@ -50,16 +56,17 @@ export default function NavBar() {
               value={active ?? ""}
               onChange={(e) => onSelect(e.target.value)}
             >
-              {/* Aktiver Markt zuerst zeigen (falls nicht in Liste) */}
-              {active && !markets.some(m => m.id === active) && (
+              {active && !markets.some((m) => m.id === active) && (
                 <option value={active}>{activeLabel}</option>
               )}
-              {markets.map(m => (
+              {markets.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name || m.id}
                 </option>
               ))}
-              {!active && markets.length === 0 && <option value="">Kein Markt</option>}
+              {!active && markets.length === 0 && (
+                <option value="">Kein Markt</option>
+              )}
             </select>
           </div>
         )}
@@ -67,4 +74,3 @@ export default function NavBar() {
     </header>
   );
 }
-

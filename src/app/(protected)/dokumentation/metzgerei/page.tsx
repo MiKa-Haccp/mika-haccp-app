@@ -95,7 +95,8 @@ export default function MetzgereiDokuIndexPage() {
               ? PERIOD_LABEL[def.period]
               : null;
 
-          const slug = (def.sectionKey || def.id).trim(); // 👈 z.B. "taegl-reinigung"
+          // Slug für die URL:
+          const slug = (def.sectionKey || def.id).trim();
 
           return (
             <li key={def.id}>

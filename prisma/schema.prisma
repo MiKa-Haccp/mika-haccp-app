@@ -15,18 +15,21 @@ datasource db {
 // ----------------------------------------------------
 
 model FormDefinition {
-  id          String         @id @default(cuid())
-  tenantId    String
-  categoryKey String
-  sectionKey  String
-  label       String
-  period      String
-  schemaJson  Json
-  active      Boolean        @default(true)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id               String         @id @default(cuid())
+  tenantId         String
+  categoryKey      String
+  sectionKey       String
+  label            String
+  period           String
+  schemaJson       Json
+  active           Boolean        @default(true)
+  // 🔹 NEU:
+  marketId         String? // null = global; sonst nur in diesem Markt sichtbar
+  lockedForMarkets Boolean        @default(false) // true = Markt-Admins dürfen nicht ändern
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
   // 👉 Gegenfeld zur Relation in FormInstance:
-  instances   FormInstance[]
+  instances        FormInstance[]
 
   @@index([tenantId, sectionKey, active])
 }

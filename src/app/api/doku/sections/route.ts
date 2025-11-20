@@ -1,132 +1,160 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { canManageSections } from "@/lib/acl";
-import { Prisma } from "@prisma/client"; // für Fehlercodes
 
 const TENANT = "T1";
 
-// Dev: Principal aus Header lesen (später echte Auth)
-function getPrincipal(req: Request) {
-  const h = req.headers.get("x-dev-user");
-  return h || "anonymous";
+// ganz einfache Dev-Auth: Header x-dev-user: dev-root
+function isDevSuper(req: Request) {
+  const devUser = req.headers.get("x-dev-user");
+  return devUser === "dev-root";
 }
 
-/** GET /api/doku/sections?tenantId=T1&marketId=... */
+// GET /api/doku/sections?tenantId=T1&marketId=...
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const tenantId = searchParams.get("tenantId") ?? TENANT;
-  const marketId = searchParams.get("marketId");
+  try {
+    const { searchParams } = new URL(req.url);
+    const tenantId = searchParams.get("tenantId") || TENANT;
+    const marketId = searchParams.get("marketId");
 
-  let where: any = { tenantId, active: true };
+    const sections = await prisma.dokuSection.findMany({
+      where: {
+        tenantId,
+        active: true,
+        OR: marketId
+          ? [
+              { marketId }, // markt-spezifisch
+              { marketId: null }, // global
+            ]
+          : [{ marketId: null }],
+      },
+      orderBy: [
+        { order: "asc" },
+        { label: "asc" },
+      ],
+    });
 
-  if (marketId) {
-    // global + exakt dieser Markt
-    where.OR = [{ marketId }, { marketId: null }];
-  } else {
-    // kein Markt -> nur globale
-    where.marketId = null;
+    return NextResponse.json({ ok: true, sections });
+  } catch (e) {
+    console.error("doku.sections.list error", e);
+    return NextResponse.json(
+      { ok: false, error: "Serverfehler beim Laden der Sektionen." },
+      { status: 500 }
+    );
   }
-
-  const sections = await prisma.dokuSection.findMany({
-    where,
-    orderBy: [{ order: "asc" }, { label: "asc" }],
-    select: { id: true, slug: true, label: true, marketId: true, order: true, active: true },
-  });
-
-  return NextResponse.json({
-    sections: sections.map((s) => ({
-      id: s.id,
-      slug: s.slug,
-      label: s.label,
-      status: "open",
-      marketId: s.marketId,
-      order: s.order,
-      active: s.active,
-    })),
-  });
 }
 
-/** POST /api/doku/sections */
+// POST /api/doku/sections  (nur dev-root)
 export async function POST(req: Request) {
   try {
-    const principalId = getPrincipal(req);
-    const { tenantId = TENANT, marketId = null, slug, label, order = 0 } = await req.json();
+    if (!isDevSuper(req)) {
+      return NextResponse.json(
+        { ok: false, error: "Nicht erlaubt (nur Superadmin)." },
+        { status: 403 }
+      );
+    }
+
+    const body = await req.json();
+    const tenantId = body.tenantId || TENANT;
+    const marketId: string | null = body.marketId ?? null;
+    const slug: string = String(body.slug || "").trim();
+    const label: string = String(body.label || "").trim();
+    const order: number = Number(body.order ?? 0);
 
     if (!slug || !label) {
-      return NextResponse.json({ error: "Missing fields: slug, label" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Slug und Bezeichnung sind Pflichtfelder." },
+        { status: 400 }
+      );
     }
 
-    const ok = await canManageSections(principalId, tenantId, marketId);
-    if (!ok) return NextResponse.json({ error: "forbidden" }, { status: 403 });
-
-    // WICHTIG: KEIN categoryKey, solange dein Prisma-Modell dieses Feld nicht hat!
-    const created = await prisma.dokuSection.create({
-      data: { tenantId, marketId, slug, label, order, active: true },
-      select: { id: true, slug: true, label: true, marketId: true, order: true, active: true },
+    const sec = await prisma.dokuSection.create({
+      data: {
+        tenantId,
+        marketId,
+        slug,
+        label,
+        order,
+        active: true,
+      },
     });
 
-    return NextResponse.json({ section: created }, { status: 201 });
-  } catch (e: any) {
-    // Hilfreiche Fehlerausgabe & sinnvolle Statuscodes
-    if (e instanceof Prisma.PrismaClientKnownRequestError) {
-      if (e.code === "P2002") {
-        return NextResponse.json({ error: "Duplicate (unique constraint)" }, { status: 409 });
-      }
-    }
-    console.error("POST /api/doku/sections failed:", e);
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+    return NextResponse.json({ ok: true, section: sec });
+  } catch (e) {
+    console.error("doku.sections.create error", e);
+    return NextResponse.json(
+      { ok: false, error: "Serverfehler beim Anlegen der Sektion." },
+      { status: 500 }
+    );
   }
 }
 
-/** PATCH /api/doku/sections  (label/order/active ändern) */
+// PATCH /api/doku/sections   (Update Label/Order/Active)
 export async function PATCH(req: Request) {
   try {
-    const principalId = getPrincipal(req);
-    const { id, label, order, active } = await req.json();
-    if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+    if (!isDevSuper(req)) {
+      return NextResponse.json(
+        { ok: false, error: "Nicht erlaubt (nur Superadmin)." },
+        { status: 403 }
+      );
+    }
 
-    const row = await prisma.dokuSection.findUnique({ where: { id } });
-    if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
+    const body = await req.json();
+    const id: string | undefined = body.id;
 
-    const ok = await canManageSections(principalId, row.tenantId, row.marketId);
-    if (!ok) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    if (!id) {
+      return NextResponse.json(
+        { ok: false, error: "ID fehlt." },
+        { status: 400 }
+      );
+    }
 
-    const updated = await prisma.dokuSection.update({
+    const patch: any = {};
+    if (body.label !== undefined) patch.label = String(body.label);
+    if (body.order !== undefined) patch.order = Number(body.order);
+    if (body.active !== undefined) patch.active = !!body.active;
+
+    const sec = await prisma.dokuSection.update({
       where: { id },
-      data: {
-        ...(label !== undefined ? { label } : {}),
-        ...(order !== undefined ? { order } : {}),
-        ...(active !== undefined ? { active } : {}),
-      },
-      select: { id: true, slug: true, label: true, marketId: true, order: true, active: true },
+      data: patch,
     });
 
-    return NextResponse.json({ section: updated });
+    return NextResponse.json({ ok: true, section: sec });
   } catch (e) {
-    console.error("PATCH /api/doku/sections failed:", e);
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+    console.error("doku.sections.update error", e);
+    return NextResponse.json(
+      { ok: false, error: "Serverfehler beim Aktualisieren der Sektion." },
+      { status: 500 }
+    );
   }
 }
 
-/** DELETE /api/doku/sections?id=... */
+// DELETE /api/doku/sections?id=...
 export async function DELETE(req: Request) {
   try {
-    const principalId = getPrincipal(req);
+    if (!isDevSuper(req)) {
+      return NextResponse.json(
+        { ok: false, error: "Nicht erlaubt (nur Superadmin)." },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
-    if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-    const row = await prisma.dokuSection.findUnique({ where: { id } });
-    if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
-
-    const ok = await canManageSections(principalId, row.tenantId, row.marketId);
-    if (!ok) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    if (!id) {
+      return NextResponse.json(
+        { ok: false, error: "ID fehlt." },
+        { status: 400 }
+      );
+    }
 
     await prisma.dokuSection.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (e) {
-    console.error("DELETE /api/doku/sections failed:", e);
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+    console.error("doku.sections.delete error", e);
+    return NextResponse.json(
+      { ok: false, error: "Serverfehler beim Löschen der Sektion." },
+      { status: 500 }
+    );
   }
 }
-
