@@ -4,8 +4,6 @@ import type { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
-const TENANT = process.env.TENANT_ID ?? "default";
-
 function normalizeMarketId(raw: string | null): string | null {
   if (raw == null) return null;
   const v = String(raw).trim().toLowerCase();
@@ -43,30 +41,30 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const marketId = normalizeMarketId(searchParams.get("marketId"));
 
-    // Definitionen
+    // Definitionen (KEIN tenantId-Filter)
     const defsGlobal = await prisma.formDefinition.findMany({
-      where: { tenantId: TENANT, active: true, categoryKey: "metzgerei", marketId: null },
+      where: { active: true, categoryKey: "metzgerei", marketId: null },
       orderBy: [{ label: "asc" }],
     });
     const defsMarket = marketId
       ? await prisma.formDefinition.findMany({
-          where: { tenantId: TENANT, active: true, categoryKey: "metzgerei", marketId },
+          where: { active: true, categoryKey: "metzgerei", marketId },
           orderBy: [{ label: "asc" }],
         })
       : [];
     const definitions = marketId ? [...defsGlobal, ...defsMarket] : defsGlobal;
 
-    // Instanzen — ACHTUNG: zwei getrennte Queries (kein gemeinsames where-Objekt!)
+    // Instanzen (KEIN tenantId-Filter), getrennte Abfragen damit niemals equals:null entsteht
     let instances;
     if (marketId) {
       instances = await prisma.formInstance.findMany({
-        where: { tenantId: TENANT, marketId, definition: { active: true, categoryKey: "metzgerei" } },
+        where: { marketId, definition: { active: true, categoryKey: "metzgerei" } },
         include: { definition: true },
         orderBy: [{ updatedAt: "desc" }],
       });
     } else {
       instances = await prisma.formInstance.findMany({
-        where: { tenantId: TENANT, marketId: null, definition: { active: true, categoryKey: "metzgerei" } },
+        where: { marketId: null, definition: { active: true, categoryKey: "metzgerei" } },
         include: { definition: true },
         orderBy: [{ updatedAt: "desc" }],
       });
@@ -93,12 +91,14 @@ export async function POST(req: Request) {
 
     const now = new Date();
     const periodRef = periodRefFrom(def.period ?? "day", now);
+    const tenant = def.tenantId ?? "default"; // sicherer Fallback
 
-    const existing = await prisma.formInstance.findUnique({
+    const existing = await prisma.formInstance.findFirst({
       where: {
-        tenantId_marketId_formDefinitionId_periodRef: {
-          tenantId: TENANT, marketId: String(marketId), formDefinitionId: def.id, periodRef,
-        },
+        tenantId: tenant,
+        marketId: String(marketId),
+        formDefinitionId: def.id,
+        periodRef,
       },
       include: { definition: true },
     });
@@ -106,8 +106,13 @@ export async function POST(req: Request) {
 
     const created = await prisma.formInstance.create({
       data: {
-        tenantId: TENANT, marketId: String(marketId), formDefinitionId: def.id,
-        year: now.getFullYear(), periodRef, status: "open", createdBy: null,
+        tenantId: tenant,
+        marketId: String(marketId),
+        formDefinitionId: def.id,
+        year: now.getFullYear(),
+        periodRef,
+        status: "open",
+        createdBy: null,
       },
       include: { definition: true },
     });
