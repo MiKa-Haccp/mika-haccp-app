@@ -2,118 +2,54 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useMarket } from "@/components/MarketProvider";
 
-type FormDef = {
-  id: string;
-  sectionKey: string | null;
-  label: string;
-  period: string | null;
-};
+type Def = { id: string; label: string; sectionKey: string; marketId: string | null };
 
-const PERIOD_LABEL: Record<string, string> = {
-  daily: "täglich",
-  weekly: "wöchentlich",
-  monthly: "monatlich",
-  quarterly: "vierteljährlich",
-  yearly: "jährlich",
-};
+export default function DokuMetzgereiIndex() {
+  const { selected } = useMarket();
+  const marketId = selected?.id ?? null;
 
-export default function MetzgereiDokuIndexPage() {
-  const [items, setItems] = useState<FormDef[]>([]);
-  const [status, setStatus] = useState<"loading" | "ok" | "empty" | "error">(
-    "loading"
-  );
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [defs, setDefs] = useState<Def[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      setStatus("loading");
-      setErrorMsg(null);
-
-      try {
-        const res = await fetch("/api/doku/metzgerei/defs", {
-          cache: "no-store",
-        });
-
-        if (!res.ok) {
-          throw new Error(await res.text());
-        }
-
-        const json = await res.json();
-        const defs: FormDef[] = json?.items ?? [];
-
-        if (!cancelled) {
-          setItems(defs);
-          setStatus(defs.length ? "ok" : "empty");
-        }
-      } catch (err) {
-        if (!cancelled) {
-          console.error("load metzgerei defs error", err);
-          setStatus("error");
-          setErrorMsg("Konnte Formulare nicht laden.");
-        }
-      }
+  async function load() {
+    setLoading(true);
+    try {
+      const url = marketId ? `/api/metzgerei?marketId=${encodeURIComponent(marketId)}` : `/api/metzgerei`;
+      const text = await fetch(url, { cache: "no-store" }).then(r => r.text());
+      const json = text ? JSON.parse(text) : {};
+      const list: Def[] = (json.definitions ?? []).map((d: any) => ({
+        id: d.id, label: d.label, sectionKey: d.sectionKey, marketId: d.marketId
+      }));
+      setDefs(list);
+    } finally {
+      setLoading(false);
     }
+  }
 
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [marketId]);
 
   return (
-    <main className="p-6 space-y-4">
-      <header>
-        <h1 className="text-2xl font-bold mb-1">
-          Dokumentation · Metzgerei
-        </h1>
-        <p className="text-sm opacity-70">
-          Übersicht aller Formular-Dokumentationen in der Metzgerei. Einträge
-          kommen aus den jeweiligen Erfassungsseiten (täglich, wöchentlich,
-          Wareneingang usw.).
-        </p>
-      </header>
+    <main className="py-6">
+      <h1 className="text-2xl font-extrabold mb-4"><span className="mika-brand">Dokumentation · Metzgerei</span></h1>
+      {loading && <p className="text-sm">Lade…</p>}
+      {!loading && defs.length === 0 && <p className="text-sm opacity-70">Keine Formulare gefunden.</p>}
 
-      {status === "loading" && <p>Lade…</p>}
-      {status === "error" && (
-        <p className="text-sm text-red-600">
-          {errorMsg ?? "Fehler beim Laden."}
-        </p>
+      {!loading && defs.length > 0 && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {defs.map((d) => (
+            <Link
+              key={d.id}
+              href={`/dokumentation/metzgerei/${encodeURIComponent(d.sectionKey)}`}
+              className="rounded-2xl p-5 mika-card shadow block hover:shadow-lg transition"
+            >
+              <h3 className="text-lg font-semibold">{d.label}</h3>
+              <p className="opacity-70 text-sm">{d.marketId ? "Markt-spezifisch" : "Global"}</p>
+            </Link>
+          ))}
+        </div>
       )}
-      {status === "empty" && (
-        <p className="text-sm opacity-70">
-          Noch keine Formulare definiert.
-        </p>
-      )}
-
-      <ul className="space-y-2">
-        {items.map((def) => {
-          const periodLabel =
-            def.period && PERIOD_LABEL[def.period]
-              ? PERIOD_LABEL[def.period]
-              : null;
-
-          // Slug für die URL:
-          const slug = (def.sectionKey || def.id).trim();
-
-          return (
-            <li key={def.id}>
-              <Link
-                href={`/dokumentation/metzgerei/${slug}`}
-                className="block rounded-2xl border p-4 hover:bg-gray-50"
-              >
-                <div className="font-semibold">{def.label}</div>
-                <div className="text-xs opacity-70 mt-1">
-                  ID: {def.id}
-                  {periodLabel && ` · Zeitraum: ${periodLabel}`}
-                </div>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
     </main>
   );
 }

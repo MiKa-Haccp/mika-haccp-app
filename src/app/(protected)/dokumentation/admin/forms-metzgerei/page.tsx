@@ -1,18 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useMarket } from "@/components/MarketProvider";
+import { useMyMarkets } from "@/hooks/useMyMarkets";
 
 type FormDef = {
   id: string;
+  tenantId: string;
   label: string;
   sectionKey: string | null;
   period: string | null;
   active: boolean;
   template?: string | null;
   marketId?: string | null;
+  updatedAt?: string;
 };
 
 type Status = "loading" | "ok" | "empty" | "error";
+type Scope = "global" | "market";
 
 const PERIOD_OPTIONS = [
   { value: "", label: "– kein Zeitraum –" },
@@ -24,7 +29,6 @@ const PERIOD_OPTIONS = [
   { value: "year", label: "jährlich" },
 ];
 
-// 🔹 NEU: Formular-Typen (Templates)
 const TEMPLATE_OPTIONS = [
   { value: "generic_check", label: "Einfaches Häkchenformular" },
   { value: "cleaning_basic", label: "Reinigung (Checkliste)" },
@@ -33,32 +37,45 @@ const TEMPLATE_OPTIONS = [
 ];
 
 export default function MetzgereiFormsAdminPage() {
+  const { selected } = useMarket(); // aktueller Markt aus der Navbar
+  const { markets } = useMyMarkets();
+
   const [items, setItems] = useState<FormDef[]>([]);
   const [status, setStatus] = useState<Status>("loading");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [marketId, setMarketId] = useState<string | null>(null);
 
-  // Formular-Status
+  // Formular-UI-State
   const [editId, setEditId] = useState<string | null>(null);
   const [id, setId] = useState("");
   const [label, setLabel] = useState("");
   const [sectionKey, setSectionKey] = useState("");
   const [period, setPeriod] = useState<string>("");
-  const [template, setTemplate] = useState<string>("generic_check"); // 🔹 NEU
+  const [template, setTemplate] = useState<string>("generic_check");
   const [active, setActive] = useState(true);
+  const [scope, setScope] = useState<Scope>("global"); // << NEU
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+
+  const selectedMarketId = selected?.id ?? null;
+  const selectedMarketName = selected?.name ?? "—";
+
+  const scopeLabel = useMemo(() => {
+    return scope === "global"
+      ? "Global (alle Märkte)"
+      : selectedMarketId
+      ? `Nur im Markt: ${selectedMarketName}`
+      : "Nur im Markt: (bitte oben in der Navbar wählen)";
+  }, [scope, selectedMarketId, selectedMarketName]);
 
   async function reload() {
     setStatus("loading");
     setErrorMsg(null);
     try {
-      const params = new URLSearchParams();
-      if (marketId) params.set("marketId", marketId); //  
       const res = await fetch("/api/admin/forms/metzgerei", { cache: "no-store" });
-      if (!res.ok) throw new Error(await res.text());
-      const json = await res.json();
-      const defs: FormDef[] = json?.items ?? [];
+      const text = await res.text();
+      const json = text ? JSON.parse(text) : { ok: false, items: [] };
+      if (!res.ok || json.ok === false) throw new Error(json?.error || text || "Request failed");
+      const defs: FormDef[] = json.items ?? [];
       setItems(defs);
       setStatus(defs.length ? "ok" : "empty");
     } catch (err) {
@@ -70,7 +87,7 @@ export default function MetzgereiFormsAdminPage() {
 
   useEffect(() => {
     reload();
-  }, [marketId]); // 👈 hängt jetzt von marketId ab
+  }, []);
 
   function resetForm() {
     setEditId(null);
@@ -78,19 +95,21 @@ export default function MetzgereiFormsAdminPage() {
     setLabel("");
     setSectionKey("");
     setPeriod("");
-    setTemplate("generic_check"); // 🔹 NEU
+    setTemplate("generic_check");
     setActive(true);
+    setScope("global");
     setMsg(null);
   }
 
   function startEdit(def: FormDef) {
     setEditId(def.id);
-    setId(def.id); // ID darf beim Bearbeiten nicht geändert werden
+    setId(def.id);
     setLabel(def.label);
     setSectionKey(def.sectionKey ?? "");
     setPeriod(def.period ?? "");
-    setTemplate(def.template ?? "generic_check"); // 🔹 NEU
+    setTemplate(def.template ?? "generic_check");
     setActive(def.active);
+    setScope(def.marketId ? "market" : "global");
     setMsg(null);
   }
 
@@ -101,6 +120,16 @@ export default function MetzgereiFormsAdminPage() {
     if (!id || !label || !sectionKey) {
       setMsg("ID, Name und Slug sind Pflichtfelder.");
       return;
+    }
+
+    // Scope-Validierung
+    let marketIdToSend: string | null = null;
+    if (scope === "market") {
+      if (!selectedMarketId) {
+        setMsg("Bitte oben in der Navbar einen Markt wählen oder Scope = Global setzen.");
+        return;
+      }
+      marketIdToSend = selectedMarketId;
     }
 
     setSaving(true);
@@ -114,40 +143,37 @@ export default function MetzgereiFormsAdminPage() {
           sectionKey,
           period: period || null,
           active,
-          template, // 🔹 NEU
-          marketId: marketId || null,   // 👈 WICHTIG
+          template,
+          marketId: marketIdToSend, // << NEU: Scope wird angewandt
         }),
       });
-
-      const json = await res.json();
-      if (!res.ok || !json?.ok) {
-        setMsg(json?.error ?? "Speichern fehlgeschlagen.");
-      } else {
-        setMsg("Gespeichert ✔");
-        await reload();
-        // beim Neuanlegen Formular leeren, beim Bearbeiten bleiben die Werte stehen
-        if (!editId) {
-          resetForm();
-        }
-      }
-    } catch (err) {
+      const text = await res.text();
+      const json = text ? JSON.parse(text) : { ok: false };
+      if (!res.ok || json.ok === false) throw new Error(json?.error || text || "Speichern fehlgeschlagen.");
+      setMsg("Gespeichert ✔");
+      await reload();
+      if (!editId) resetForm();
+    } catch (err: any) {
       console.error("save form metzgerei error", err);
-      setMsg("Serverfehler beim Speichern.");
+      setMsg(err?.message || "Serverfehler beim Speichern.");
     } finally {
       setSaving(false);
     }
   }
 
+  function marketNameFromId(mid?: string | null) {
+    if (!mid) return "Global";
+    const m = markets.find((x) => x.id === mid);
+    return m?.name || mid;
+  }
+
   return (
     <main className="p-6 space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold mb-1">
-          Admin · Metzgerei-Formulare
-        </h1>
+      <header className="space-y-1">
+        <h1 className="text-2xl font-bold">Admin · Metzgerei-Formulare</h1>
         <p className="text-sm opacity-70">
-          Hier legst du Formulare für die Metzgerei an (z.B. Wareneingang,
-          tägliche/wöchentliche Reinigung). Die Einträge erscheinen dann in der
-          Dokumentations-Übersicht unter <span className="font-mono">Dokumentation &gt; Metzgerei</span>.
+          Aktueller Markt (aus Navbar):{" "}
+          <span className="font-medium">{selectedMarketId ? selectedMarketName : "— (global ausgewählt)"}</span>
         </p>
       </header>
 
@@ -158,20 +184,13 @@ export default function MetzgereiFormsAdminPage() {
             {editId ? "Formular bearbeiten" : "Neues Formular anlegen"}
           </h2>
           {editId && (
-            <button
-              type="button"
-              className="text-xs underline"
-              onClick={resetForm}
-            >
+            <button type="button" className="text-xs underline" onClick={resetForm}>
               Neu anlegen statt bearbeiten
             </button>
           )}
         </div>
 
-        <form
-          onSubmit={onSubmit}
-          className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 items-end"
-        >
+        <form onSubmit={onSubmit} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 items-end">
           <label className="text-sm">
             ID (technisch, eindeutig)
             <input
@@ -179,7 +198,7 @@ export default function MetzgereiFormsAdminPage() {
               placeholder="FORM_METZ_WE_HUHN"
               value={id}
               onChange={(e) => setId(e.target.value)}
-              disabled={!!editId} // beim Bearbeiten nicht änderbar
+              disabled={!!editId}
               required
             />
           </label>
@@ -204,10 +223,6 @@ export default function MetzgereiFormsAdminPage() {
               onChange={(e) => setSectionKey(e.target.value)}
               required
             />
-            <span className="block text-[11px] opacity-60 mt-1">
-              Wird z.B. als <code>/dokumentation/metzgerei/we-huhn</code>{" "}
-              verwendet.
-            </span>
           </label>
 
           <label className="text-sm">
@@ -225,7 +240,6 @@ export default function MetzgereiFormsAdminPage() {
             </select>
           </label>
 
-          {/* 🔹 NEU: Formular-Typ */}
           <label className="text-sm">
             Formular-Typ
             <select
@@ -239,17 +253,41 @@ export default function MetzgereiFormsAdminPage() {
                 </option>
               ))}
             </select>
-            <span className="block text-[11px] opacity-60 mt-1">
-              Steuert später, welche Felder das Formular hat (Reinigung, Wareneingang, Liste…)
-            </span>
           </label>
 
+          {/* Scope-Auswahl */}
+          <fieldset className="text-sm space-y-1">
+            <legend className="font-medium">Scope</legend>
+            <div className="flex flex-col gap-1">
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="scope"
+                  value="global"
+                  checked={scope === "global"}
+                  onChange={() => setScope("global")}
+                />
+                Global (für alle Märkte sichtbar)
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="scope"
+                  value="market"
+                  checked={scope === "market"}
+                  onChange={() => setScope("market")}
+                />
+                Nur im ausgewählten Markt
+                <span className="px-2 py-0.5 text-xs rounded bg-gray-100 border ml-1">
+                  {selectedMarketId ? selectedMarketName : "bitte Markt oben wählen"}
+                </span>
+              </label>
+            </div>
+            <p className="text-[11px] opacity-60">{scopeLabel}</p>
+          </fieldset>
+
           <label className="text-sm inline-flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={active}
-              onChange={(e) => setActive(e.target.checked)}
-            />
+            <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
             Aktiv (in der Dokumentation anzeigen)
           </label>
 
@@ -257,7 +295,8 @@ export default function MetzgereiFormsAdminPage() {
             <button
               type="submit"
               className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
-              disabled={saving}
+              disabled={saving || (scope === "market" && !selectedMarketId)}
+              title={scope === "market" && !selectedMarketId ? "Bitte oben in der Navbar einen Markt wählen" : ""}
             >
               {saving ? "Speichere…" : editId ? "Änderungen speichern" : "Anlegen"}
             </button>
@@ -270,14 +309,8 @@ export default function MetzgereiFormsAdminPage() {
       <section className="rounded-2xl border p-4">
         <h2 className="text-sm font-semibold mb-3">Vorhandene Formulare</h2>
         {status === "loading" && <p className="text-sm">Lade…</p>}
-        {status === "error" && (
-          <p className="text-sm text-red-600">
-            {errorMsg ?? "Fehler beim Laden."}
-          </p>
-        )}
-        {status === "empty" && (
-          <p className="text-sm opacity-70">Noch keine Formulare angelegt.</p>
-        )}
+        {status === "error" && <p className="text-sm text-red-600">{errorMsg ?? "Fehler beim Laden."}</p>}
+        {status === "empty" && <p className="text-sm opacity-70">Noch keine Formulare angelegt.</p>}
         {status === "ok" && (
           <div className="overflow-x-auto">
             <table className="min-w-full text-xs">
@@ -288,8 +321,8 @@ export default function MetzgereiFormsAdminPage() {
                   <th className="text-left px-3 py-2">Slug</th>
                   <th className="text-left px-3 py-2">Zeitraum</th>
                   <th className="text-left px-3 py-2">Typ</th>
-                  <th className="text-left px-3 py-2">Aktiv</th>
                   <th className="text-left px-3 py-2">Scope</th>
+                  <th className="text-left px-3 py-2">Geändert</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
@@ -298,27 +331,24 @@ export default function MetzgereiFormsAdminPage() {
                   <tr key={def.id} className="border-t">
                     <td className="px-3 py-1 font-mono">{def.id}</td>
                     <td className="px-3 py-1">{def.label}</td>
-                    <td className="px-3 py-1 font-mono">
-                      {def.sectionKey ?? <span className="opacity-60">–</span>}
+                    <td className="px-3 py-1 font-mono">{def.sectionKey ?? <span className="opacity-60">–</span>}</td>
+                    <td className="px-3 py-1">{def.period ?? <span className="opacity-60">–</span>}</td>
+                    <td className="px-3 py-1">{def.template ?? <span className="opacity-60">generic_check</span>}</td>
+                    <td className="px-3 py-1">
+                      {def.marketId ? (
+                        <>
+                          <span className="rounded bg-blue-50 border px-2 py-0.5">Markt</span>{" "}
+                          <span className="opacity-70">{marketNameFromId(def.marketId)}</span>
+                        </>
+                      ) : (
+                        <span className="rounded bg-gray-50 border px-2 py-0.5">Global</span>
+                      )}
                     </td>
                     <td className="px-3 py-1">
-                      {def.period ?? <span className="opacity-60">–</span>}
-                    </td>
-                    <td className="px-3 py-1">
-                      {def.template ?? <span className="opacity-60">generic_check</span>}
-                    </td>
-                    <td className="px-3 py-1">
-                      {def.active ? "✔" : <span className="opacity-60">inaktiv</span>}
-                    </td>
-                    <td className="px-3 py-1">
-                      {def.marketId ? "Markt-spezifisch" : "Global"}
+                      {def.updatedAt ? new Date(def.updatedAt).toLocaleString() : <span className="opacity-60">–</span>}
                     </td>
                     <td className="px-3 py-1 text-right">
-                      <button
-                        type="button"
-                        className="rounded border px-3 py-1 text-[11px]"
-                        onClick={() => startEdit(def)}
-                      >
+                      <button type="button" className="rounded border px-3 py-1 text-[11px]" onClick={() => startEdit(def)}>
                         Bearbeiten
                       </button>
                     </td>
@@ -332,4 +362,3 @@ export default function MetzgereiFormsAdminPage() {
     </main>
   );
 }
-

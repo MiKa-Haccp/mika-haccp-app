@@ -1,16 +1,15 @@
 import AuthGuard from "@/components/AuthGuard";
-import NavBar from "@/components/NavBar";
 import MarketProvider from "@/components/MarketProvider";
-import EnsureMarket from "@/components/EnsureMarket";
+import NavBar from "@/components/NavBar";
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthGuard>
       <MarketProvider>
         <NavBar />
-        <div className="pt-20">
+        <div className="pt-14">
           <div className="mx-auto max-w-6xl px-4">
-            <EnsureMarket>{children}</EnsureMarket>
+            {children}
           </div>
         </div>
       </MarketProvider>

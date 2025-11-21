@@ -1,74 +1,42 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/db";
 
-const TENANT = "T1";
+export const dynamic = "force-dynamic";
 
-const PERIOD_LABEL: Record<string, string> = {
-  day: "täglich",
-  week: "wöchentlich",
-  month: "monatlich",
-  quarter: "vierteljährlich",
-  half_year: "halbjährlich",
-  year: "jährlich",
-};
+function normalizeMarketId(raw: string | null): string | null {
+  if (raw == null) return null;
+  const v = String(raw).trim().toLowerCase();
+  if (v === "" || v === "null" || v === "undefined") return null;
+  return raw;
+}
 
+// GET /api/metzgerei/status?marketId=<id|''|'null'>
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const marketId = searchParams.get("marketId");
-
-  if (!marketId) {
-    return NextResponse.json(
-      { ok: false, error: "Missing marketId", items: [] },
-      { status: 400 }
-    );
-  }
-
   try {
-    // 1) Alle aktiven Metzgerei-Formulare holen (global + marktbezogen, falls du später marketId in FormDefinition benutzen willst)
-    const defs = await prisma.formDefinition.findMany({
-      where: {
-        tenantId: TENANT,
-        categoryKey: "metzgerei",
-        active: true,
-      },
-      orderBy: [
-        { sectionKey: "asc" },
-        { label: "asc" },
-      ],
-      select: {
-        id: true,
-        label: true,
-        sectionKey: true,
-        period: true,
-      },
-    });
+    const { searchParams } = new URL(req.url);
+    const marketId = normalizeMarketId(searchParams.get("marketId"));
 
-    // 2) Kacheln bauen
-    const items = defs.map((d) => {
-      const slug = (d.sectionKey || d.id).trim();
-      const periodLabel =
-        d.period && PERIOD_LABEL[d.period]
-          ? PERIOD_LABEL[d.period]
-          : d.period ?? null;
+    // Nur mit gewähltem Markt Instanzen liefern; global -> leeres Array
+    const items = marketId
+      ? await prisma.formInstance.findMany({
+          where: {
+            definition: { active: true, categoryKey: "metzgerei" },
+            marketId, // exakt dieser Markt
+          },
+          select: {
+            id: true,
+            marketId: true,
+            periodRef: true,
+            status: true,
+            updatedAt: true,
+            definition: { select: { id: true, label: true, marketId: true } },
+          },
+          orderBy: [{ updatedAt: "desc" }],
+        })
+      : [];
 
-      return {
-        slug,          // z.B. "taegl-reinigung"
-        label: d.label,
-        period: periodLabel,
-        ok: false,     // 👉 erstmal immer "offen" (rot), Status-Logik bauen wir später wieder ein
-      };
-    });
-
-    return NextResponse.json({ ok: true, items });
-  } catch (e) {
-    console.error("metzgerei.status error", e);
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Serverfehler beim Laden des Metzgerei-Status.",
-        items: [],
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: true, items }, { status: 200 });
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: e?.message || "Serverfehler" }, { status: 500 });
   }
 }

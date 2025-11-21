@@ -1,78 +1,103 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/db";
 
-const TENANT = "T1";
+export const dynamic = "force-dynamic";
 
-// GET  /api/admin/forms/metzgerei
-// -> Liste aller FormDefinitionen für categoryKey="metzgerei"
+// Fürs DEV: neuen Datensatz immer mit diesem Tenant anlegen.
+// (Später gern durch echten Tenant aus deinem Context ersetzen.)
+const NEW_TENANT = process.env.TENANT_ID ?? "default";
+
+function schemaFromTemplate(template?: string | null) {
+  switch (template) {
+    case "generic_check":
+      return { template: "generic_check", type: "checklist", items: [{ key: "ok", label: "OK", type: "boolean" }] };
+    case "cleaning_basic":
+      return {
+        template: "cleaning_basic",
+        type: "checklist",
+        items: [
+          { key: "floors", label: "Böden gereinigt", type: "boolean" },
+          { key: "surfaces", label: "Arbeitsflächen gereinigt", type: "boolean" },
+        ],
+      };
+    case "wareneingang":
+      return {
+        template: "wareneingang",
+        type: "goods_in",
+        fields: [
+          { key: "supplier", label: "Lieferant", type: "text" },
+          { key: "temp", label: "Temperatur (°C)", type: "number" },
+          { key: "ok", label: "Unversehrt/OK", type: "boolean" },
+        ],
+      };
+    case "simple_list":
+      return { template: "simple_list", type: "list", columns: [{ key: "text", label: "Eintrag", type: "text" }] };
+    default:
+      return { template: "custom", type: "custom", items: [] };
+  }
+}
+
+// Alle Metzgerei-Formulare zeigen (ohne tenant-Filter, damit ALTE Datensätze sichtbar bleiben)
+export async function GET() {
+  try {
+    const defs = await prisma.formDefinition.findMany({
+      where: { categoryKey: "metzgerei" },
+      orderBy: [{ createdAt: "desc" }],
+    });
+    return NextResponse.json({ ok: true, items: defs }, { status: 200 });
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: e?.message || "Serverfehler" }, { status: 500 });
+  }
+}
+
+// Erstellen + Bearbeiten: UPsert (update wenn vorhanden, create wenn neu)
+// Body: { id, label, sectionKey, period, active, template, marketId|null }
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const rawId: string | undefined = body.id;
-    const rawLabel: string | undefined = body.label;
-    const rawSectionKey: string | undefined = body.sectionKey;
-    const rawPeriod: string | null | undefined = body.period ?? null;
-    const rawActive: boolean | undefined = body.active;
-    const rawTemplate: string | undefined = body.template;
-    const rawMarketId: string | null | undefined = body.marketId ?? null; // 👈 NEU
+    const {
+      id,
+      label,
+      sectionKey,
+      period = "none",
+      active = true,
+      template = "generic_check",
+      marketId = null,
+    } = body || {};
 
-    // ... deine bisherigen Checks ...
+    if (!id || !label || !sectionKey) {
+      return NextResponse.json({ ok: false, error: "id, label und sectionKey sind erforderlich." }, { status: 400 });
+    }
 
-    const period =
-      rawPeriod === null || rawPeriod === undefined || rawPeriod === ""
-        ? null
-        : String(rawPeriod);
+    const schemaJson = schemaFromTemplate(template);
 
-    const active = rawActive ?? true;
-    const template =
-      rawTemplate && typeof rawTemplate === "string"
-        ? rawTemplate
-        : "generic_check";
-
-    const marketId =
-      rawMarketId === null || rawMarketId === undefined || rawMarketId === ""
-        ? null
-        : String(rawMarketId);
-
-    const def = await prisma.formDefinition.upsert({
-      where: { id },
+    const saved = await prisma.formDefinition.upsert({
+      where: { id }, // existiert? -> update
       update: {
         label,
         sectionKey,
         period,
-        active,
-        marketId,
-        schemaJson: { template },
+        active: !!active,
+        schemaJson,
+        marketId: marketId ?? null, // Scope
+        categoryKey: "metzgerei",   // hart für diesen Admin
       },
       create: {
         id,
-        tenantId: TENANT,
+        tenantId: NEW_TENANT,
         categoryKey: "metzgerei",
         sectionKey,
         label,
         period,
-        marketId,
-        schemaJson: { template },
-        active,
+        schemaJson,
+        active: !!active,
+        marketId: marketId ?? null, // Scope
+        lockedForMarkets: false,
       },
     });
 
-    return NextResponse.json({ ok: true, def });
+    return NextResponse.json({ ok: true, item: saved }, { status: 200 });
   } catch (e: any) {
-    console.error("admin.forms.metzgerei.upsert error", e);
-
-    // z.B. Unique-Fehler usw. sauber melden
-    if (e instanceof Prisma.PrismaClientKnownRequestError) {
-      return NextResponse.json(
-        { ok: false, error: `Datenbankfehler (${e.code}): ${e.message}` },
-        { status: 400 }
-      );
-    }
-
-    return NextResponse.json(
-      { ok: false, error: "Serverfehler beim Speichern." },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: e?.message || "Serverfehler" }, { status: 500 });
   }
 }
