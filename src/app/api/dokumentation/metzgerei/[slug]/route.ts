@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+// src/app/api/dokumentation/metzgerei/[slug]/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -8,33 +9,55 @@ const norm = (v: unknown) => {
   if (v == null) return null;
   const s = String(v).trim();
   return !s || s.toLowerCase() === "null" || s.toLowerCase() === "undefined" ? null : s;
-  };
+};
 
-export async function GET(req: Request, { params }: { params: { slug: string } }) {
+export async function GET(
+  req: NextRequest,
+  ctx: { params: Promise<{ slug: string }> }
+) {
+  const { slug } = await ctx.params;
+
   const { searchParams } = new URL(req.url);
   const marketId = norm(searchParams.get("marketId"));
-  const section = params.slug;
 
-  if (!marketId) return NextResponse.json({ error: "marketId erforderlich" }, { status: 400 });
+  if (!marketId) {
+    return NextResponse.json({ error: "marketId erforderlich" }, { status: 400 });
+  }
 
   const defs = await prisma.formDefinition.findMany({
-    where: { tenantId: TENANT_ID, active: true, categoryKey: "metzgerei", sectionKey: section },
+    where: {
+      tenantId: TENANT_ID,
+      active: true,
+      categoryKey: "metzgerei",
+      sectionKey: slug,
+    },
     orderBy: { createdAt: "desc" },
   });
 
-  if (!defs.length) return NextResponse.json({ ok: true, section, marketId, items: [] });
+  if (!defs.length) {
+    return NextResponse.json({ ok: true, section: slug, marketId, items: [] });
+  }
 
+  // über Relation filtern (robust, unabhängig davon ob formInstance selbst tenantId hat)
   const rows = await prisma.formInstance.findMany({
-    where: { tenantId: TENANT_ID, marketId: marketId as string, formDefinitionId: { in: defs.map(d => d.id) } },
+    where: {
+      marketId: marketId as string,
+      definition: {
+        tenantId: TENANT_ID,
+        active: true,
+        categoryKey: "metzgerei",
+        sectionKey: slug,
+      },
+    },
     include: { definition: true },
     orderBy: [{ updatedAt: "desc" }],
   });
 
   return NextResponse.json({
     ok: true,
-    section,
+    section: slug,
     marketId,
-    items: rows.map(r => ({
+    items: rows.map((r) => ({
       id: r.id,
       updatedAt: r.updatedAt,
       createdAt: r.createdAt,
