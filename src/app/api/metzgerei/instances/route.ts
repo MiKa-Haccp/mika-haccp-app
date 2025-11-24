@@ -1,18 +1,16 @@
-// src/app/api/metzgerei/instances/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma"; // ggf. zu "@/lib/db" anpassen
 
-const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID || "default";
+export const dynamic = "force-dynamic";
+const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID ?? "default";
 
-export async function GET(
-  _req: NextRequest,
-  ctx: { params: Promise<{ id: string }> }
-) {
-  const { id } = await ctx.params;
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const marketId = searchParams.get("marketId") ?? undefined;
 
-  const row = await prisma.formInstance.findFirst({
+  const items = await prisma.formInstance.findMany({
     where: {
-      id,
+      ...(marketId ? { marketId } : {}),
       definition: {
         tenantId: TENANT_ID,
         active: true,
@@ -20,8 +18,8 @@ export async function GET(
       },
     },
     include: { definition: true },
+    orderBy: { updatedAt: "desc" },
   });
 
-  if (!row) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
-  return NextResponse.json({ ok: true, item: row });
+  return NextResponse.json({ ok: true, items });
 }
