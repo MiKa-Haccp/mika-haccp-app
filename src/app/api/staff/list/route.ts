@@ -15,7 +15,7 @@ export async function GET(req: Request) {
       where: {
         tenantId: TENANT,
         OR: [
-          { marketId: null },
+          { marketId: { equals: null } },
           { marketId },
         ],
       },
@@ -27,7 +27,10 @@ export async function GET(req: Request) {
       where: {
         tenantId: TENANT,
         principalId: { in: ids },
-        OR: [{ marketId }, { marketId: null }],
+        OR: [
+          { marketId: { equals: marketId } },
+          { marketId: { equals: null } },
+        ],
       },
     });
 

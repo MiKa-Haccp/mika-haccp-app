@@ -23,9 +23,9 @@ export async function GET(req: Request) {
         OR: marketId
           ? [
               { marketId }, // markt-spezifisch
-              { marketId: null }, // global
+              { marketId: { equals: null } }, // global
             ]
-          : [{ marketId: null }],
+          : [{ marketId: { equals: null } }],
       },
       orderBy: [
         { order: "asc" },

@@ -19,7 +19,7 @@ export async function GET(req: Request) {
 
     // Zwei Queries (robust, ohne NULL-Equals), dann mergen:
     const globalsPromise = prisma.formDefinition.findMany({
-      where: { active: true, categoryKey: category, marketId: null },
+      where: { active: true, category: category, marketId: { equals: null } },
       orderBy: [{ label: "asc" }],
     });
 

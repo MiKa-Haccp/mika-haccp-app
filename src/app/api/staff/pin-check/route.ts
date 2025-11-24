@@ -18,7 +18,7 @@ export async function POST(req: Request) {
         initials: initials.toUpperCase(),
         OR: [
           { marketId: marketId ?? undefined },
-          { marketId: null }, // optional: erlaube globales Personal
+          { marketId: { equals: null } }, // optional: erlaube globales Personal
         ],
       },
       orderBy: { marketId: "desc" }, // bevorzugt markt-spezifisch

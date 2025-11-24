@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
     const tenantId = "default";
 
     const defsGlobal = await prisma.formDefinition.findMany({
-      where: { tenantId, active: true, categoryKey: "metzgerei", marketId: null },
+      where: { tenantId, active: true, categoryKey: "metzgerei", marketId: { equals: null } },
       select: { id: true, sectionKey: true, period: true },
     });
 

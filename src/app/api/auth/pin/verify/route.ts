@@ -30,9 +30,9 @@ export async function POST(req: Request) {
         OR: marketId
           ? [
               { marketId },        // Mitarbeiter in diesem Markt
-              { marketId: null },  // globaler Superadmin
+              { marketId: { equals: null } },  // globaler Superadmin
             ]
-          : [{ marketId: null }],  // fallback: nur globale
+          : [{ marketId: { equals: null } }],  // fallback: nur globale
       },
     });
 

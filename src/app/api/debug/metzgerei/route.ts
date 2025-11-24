@@ -1,29 +1,54 @@
-// src/app/api/debug/metzgerei/route.ts
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
+import bcrypt from "bcryptjs";
+import type { Prisma } from "@prisma/client";
 
-export const dynamic = "force-dynamic";
+const TENANT = "default"; // Falls dein Tenant "T1" ist, hier anpassen.
 
-function normalizeMarketId(raw: string | null): string | null {
-  if (raw == null) return null;
-  const v = String(raw).trim().toLowerCase();
-  if (v === "" || v === "null" || v === "undefined") return null;
-  return raw;
-}
+export async function POST(req: Request) {
+  try {
+    const { initials, newPin, marketId } = await req.json();
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const marketId = normalizeMarketId(searchParams.get("marketId"));
+    if (!initials || !newPin) {
+      return NextResponse.json(
+        { ok: false, error: "Initialen + neuer PIN nötig" },
+        { status: 400 }
+      );
+    }
 
-  const defWhere =
-    marketId
-      ? { active: true, categoryKey: "metzgerei", OR: [{ marketId: null }, { marketId }] }
-      : { active: true, categoryKey: "metzgerei", marketId: null };
+    const pinHash = await bcrypt.hash(newPin, 10);
 
-  const instWhere =
-    marketId
-      ? { definition: { active: true, categoryKey: "metzgerei" }, OR: [{ marketId }, { marketId: null }] }
-      : { definition: { active: true, categoryKey: "metzgerei" }, marketId: null };
+    // Markt-Filter korrekt aufbauen (equals: null verwenden!)
+    const whereMarket: Prisma.StaffProfileWhereInput = marketId
+      ? {
+          OR: [
+            { marketId: { equals: marketId } },
+            { marketId: { equals: null } },
+          ],
+        }
+      : { marketId: { equals: null } };
 
-  return NextResponse.json({ ok: true, marketId, defWhere, instWhere });
+    const where: Prisma.StaffProfileWhereInput = {
+      tenantId: TENANT,
+      initials,
+      ...whereMarket,
+    };
+
+    const result = await prisma.staffProfile.updateMany({
+      where,
+      data: { pinHash },
+    });
+
+    if (result.count === 0) {
+      return NextResponse.json(
+        { ok: false, error: "Mitarbeiter nicht gefunden" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({ ok: true, updated: result.count });
+  } catch (e) {
+    console.error("staff.reset-pin error", e);
+    return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });
+  }
 }

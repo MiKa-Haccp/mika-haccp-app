@@ -37,7 +37,7 @@ export async function POST(req: Request) {
           update: {},
           create: {
             tenantId: TENANT,
-            marketId: null,
+            marketId: { equals: null },
             principalId,
             role: roleEnum,
           },
@@ -77,7 +77,7 @@ export async function POST(req: Request) {
             tenantId: TENANT,
             principalId,
             role: roleEnum,
-            marketId: null,
+            marketId: { equals: null },
           },
         });
       } else {

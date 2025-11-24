@@ -1,76 +1,48 @@
+// src/app/api/metzgerei/route.ts
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
+
+const TENANT = "default";
 
 export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const marketId = url.searchParams.get("marketId"); // string | null
+  try {
+    const url = new URL(req.url);
+    const marketId = url.searchParams.get("marketId") || undefined;
 
-  // Basisfilter: nur aktive Metzgerei-Definitionen
-  const baseDef = { active: true, categoryKey: "metzgerei" } as const;
+    const baseDef = {
+      tenantId: TENANT,
+      active: true,
+      categoryKey: "metzgerei",
+    } as const;
 
-  // ---- Definitionen: global ODER markt-spezifisch (wenn marketId da ist)
-  const definitions = await prisma.formDefinition.findMany({
-    where: marketId
-      ? {
-          ...baseDef,
-          OR: [
-            { marketId: { equals: marketId } },
-            { marketId: { equals: null } },
-          ],
-        }
-      : {
-          ...baseDef,
-          marketId: { equals: null },
-        },
-    orderBy: { label: "asc" },
-  });
+    // --- Definitions: global (null) ODER marktbezogen (kein 'in: [id, null]'!)
+    const definitions = await prisma.formDefinition.findMany({
+      where: marketId
+        ? { ...baseDef, OR: [{ marketId: marketId }, { marketId: null }] }
+        : { ...baseDef, marketId: null },
+      orderBy: { label: "asc" },
+    });
 
-  // ---- Instanzen: gleiche Logik (wichtig: KEIN 'marketId: null' nackt!)
-  const instances = await prisma.formInstance.findMany({
-    where: marketId
-      ? {
-          definition: baseDef,
-          OR: [
-            { marketId: { equals: marketId } },
-            { marketId: { equals: null } },
-          ],
-        }
-      : {
-          definition: baseDef,
-          marketId: { equals: null },
-        },
-    include: { definition: true },
-    orderBy: { updatedAt: "desc" },
-  });
+    // --- Instanzen: nur laden, wenn marketId gesetzt (niemals equals:null!)
+    const instances = marketId
+      ? await prisma.formInstance.findMany({
+          where: {
+            marketId: marketId,      // wichtig: kein equals:null
+            definition: { ...baseDef },
+          },
+          include: { definition: true },
+          orderBy: { updatedAt: "desc" },
+        })
+      : [];
 
-  return NextResponse.json({ ok: true, marketId, definitions, instances });
-}
-
-export async function POST(req: Request) {
-  const body = await req.json();
-  const { definitionId, marketId } = body as {
-    definitionId: string;
-    marketId?: string | null;
-  };
-
-  if (!definitionId) {
-    return NextResponse.json({ error: "definitionId fehlt" }, { status: 400 });
+    return NextResponse.json({
+      ok: true,
+      marketId: marketId ?? null,
+      definitions,
+      instances,
+    });
+  } catch (err) {
+    console.error("GET /api/metzgerei error", err);
+    return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });
   }
-
-  const def = await prisma.formDefinition.findUnique({ where: { id: definitionId } });
-  if (!def) {
-    return NextResponse.json({ error: "Definition nicht gefunden" }, { status: 404 });
-  }
-
-  const instance = await prisma.formInstance.create({
-    data: {
-      tenantId: def.tenantId,
-      formDefinitionId: def.id,
-      // Wenn die Def marktgebunden ist, die der Def verwenden; sonst die übergebene marketId (oder null = global)
-      marketId: def.marketId ?? marketId ?? null,
-    },
-  });
-
-  return NextResponse.json({ id: instance.id });
 }
-
