@@ -1,4 +1,6 @@
+// src/app/api/debug/metzgerei/route.ts
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -13,13 +15,15 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const marketId = normalizeMarketId(searchParams.get("marketId"));
 
-  const defWhere = marketId
-    ? { active: true, categoryKey: "metzgerei", OR: [{ marketId: { equals: null } }, { marketId }] }
-    : { active: true, categoryKey: "metzgerei", marketId: { equals: null } };
+  const defWhere =
+    marketId
+      ? { active: true, categoryKey: "metzgerei", OR: [{ marketId: null }, { marketId }] }
+      : { active: true, categoryKey: "metzgerei", marketId: null };
 
-  const instWhere = marketId
-    ? { OR: [{ marketId }, { marketId: { equals: null } }], definition: { active: true, categoryKey: "metzgerei" } }
-    : { marketId: { equals: null }, definition: { active: true, categoryKey: "metzgerei" } };
+  const instWhere =
+    marketId
+      ? { definition: { active: true, categoryKey: "metzgerei" }, OR: [{ marketId }, { marketId: null }] }
+      : { definition: { active: true, categoryKey: "metzgerei" }, marketId: null };
 
-  return NextResponse.json({ ok: true, marketId, defWhere, instWhere }, { status: 200 });
+  return NextResponse.json({ ok: true, marketId, defWhere, instWhere });
 }

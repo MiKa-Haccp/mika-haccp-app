@@ -1,8 +1,10 @@
-import DocDetail from "./view";
 export const dynamic = "force-dynamic";
 
-// Next 16: params ist Promise
-export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-  return <DocDetail slug={slug} />;
+export default async function DokuSectionPage({
+  params,
+  searchParams,
+}: { params: { slug: string }, searchParams?: { marketId?: string } }) {
+  const section = params.slug;
+  const marketId = (searchParams?.marketId || "").trim();
+  // ... fetch(`/api/dokumentation/metzgerei/${section}?marketId=${marketId}`)
 }

@@ -1,8 +1,9 @@
+// src/app/api/dokumentation/metzgerei/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import type { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
+const TENANT_ID = "default";
 
 function normalizeMarketId(raw: string | null): string | null {
   if (raw == null) return null;
@@ -11,62 +12,42 @@ function normalizeMarketId(raw: string | null): string | null {
   return raw;
 }
 
+// GET /api/dokumentation/metzgerei?slug=we-baum&marketId=<...>
 export async function GET(req: Request) {
   try {
-    const url = new URL(req.url);
-    const slug = url.searchParams.get("slug");
-    const marketId = normalizeMarketId(url.searchParams.get("marketId"));
-    if (!slug) return NextResponse.json({ ok: false, error: "slug fehlt" }, { status: 400 });
+    const { searchParams } = new URL(req.url);
+    const slug = searchParams.get("slug") || "";
+    const marketId = normalizeMarketId(searchParams.get("marketId"));
 
-    // Definitionen (global + ggf. Markt) -- KEIN tenantId-Filter
-    const defsGlobal = await prisma.formDefinition.findMany({
-      where: { active: true, categoryKey: "metzgerei", sectionKey: slug, marketId: null },
-      orderBy: [{ label: "asc" }],
+    const defs = await prisma.formDefinition.findMany({
+      where: {
+        tenantId: TENANT_ID,
+        active: true,
+        categoryKey: "metzgerei",
+        sectionKey: slug,
+      },
     });
-    const defsMarket = marketId
-      ? await prisma.formDefinition.findMany({
-          where: { active: true, categoryKey: "metzgerei", sectionKey: slug, marketId },
-          orderBy: [{ label: "asc" }],
-        })
-      : [];
+    if (!defs.length) return NextResponse.json({ items: [] }, { status: 200 });
 
-    const defIdsGlobal = defsGlobal.map(d => d.id);
-    const defIdsMarket = defsMarket.map(d => d.id);
+    // Wenn Markt gewählt: zuerst Markt-Definition, sonst globale
+    const def = defs.find(d => d.marketId === marketId) ?? defs.find(d => d.marketId == null) ?? defs[0];
 
-    // WICHTIG: nie Filter-Objekt bei null, sondern Wertgleichheit
-    const whereGlobal: Prisma.FormInstanceWhereInput =
-      defIdsGlobal.length
-        ? { formDefinitionId: { in: defIdsGlobal }, marketId: null }
-        : { id: "__none__" as any }; // leer
+    // Instanzen sauber filtern
+    const where: any = {
+      tenantId: TENANT_ID,
+      formDefinitionId: def.id,
+    };
+    if (marketId) where.marketId = marketId;
+    else where.marketId = null;
 
-    const whereMarket: Prisma.FormInstanceWhereInput | null =
-      marketId && defIdsMarket.length
-        ? { formDefinitionId: { in: defIdsMarket }, marketId }
-        : null;
+    const items = await prisma.formInstance.findMany({
+      where,
+      include: { definition: true, entries: true },
+      orderBy: [{ updatedAt: "desc" }],
+    });
 
-    const [instG, instM] = await Promise.all([
-      defIdsGlobal.length
-        ? prisma.formInstance.findMany({
-            where: whereGlobal,
-            include: { definition: true },
-            orderBy: [{ updatedAt: "desc" }],
-          })
-        : Promise.resolve([] as any[]),
-      whereMarket
-        ? prisma.formInstance.findMany({
-            where: whereMarket,
-            include: { definition: true },
-            orderBy: [{ updatedAt: "desc" }],
-          })
-        : Promise.resolve([] as any[]),
-    ]);
-
-    const instances = [...instM, ...instG];
-    return NextResponse.json(
-      { ok: true, slug, definitions: [...defsGlobal, ...defsMarket], instances },
-      { status: 200 }
-    );
+    return NextResponse.json({ items, definition: def }, { status: 200 });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "Serverfehler" }, { status: 500 });
+    return NextResponse.json({ error: e?.message || "Serverfehler" }, { status: 500 });
   }
 }
