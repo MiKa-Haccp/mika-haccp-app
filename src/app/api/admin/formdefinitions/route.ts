@@ -1,18 +1,17 @@
+// src/app/api/admin/formdefinitions/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { Prisma } from "@prisma/client"; 
+import { Prisma } from "@prisma/client";
 
 const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID ?? "default";
 
 // Hilfsfunktion: Standard-Schema anhand des Typs
 function schemaFromType(type: string) {
-  // Du kannst das später ausbauen (reinigung, wareneingang, liste, ...)
+  // Später gerne ausbauen (reinigung, wareneingang, liste, ...)
   if (type === "checklist" || type === "Einfaches Häkchenformular") {
     return {
       type: "checklist",
-      items: [
-        { key: "ok", label: "OK", type: "boolean" }
-      ],
+      items: [{ key: "ok", label: "OK", type: "boolean" }],
     };
   }
   return { type: "custom", items: [] };
@@ -24,7 +23,7 @@ export async function GET(req: Request) {
   const category = searchParams.get("category") || "metzgerei";
 
   const defs = await prisma.formDefinition.findMany({
-    where: { categoryKey: category },
+    where: { tenantId: TENANT_ID, categoryKey: category },
     orderBy: [{ createdAt: "desc" }],
   });
 
@@ -32,19 +31,20 @@ export async function GET(req: Request) {
 }
 
 // POST /api/admin/formdefinitions
-// Body: { id, label, sectionKey, period, type, active, marketId? }
+// Body: { id, label, sectionKey, period, type, active, marketId?, categoryKey?, schemaJson? }
 export async function POST(req: Request) {
   const body = await req.json();
   const {
-    id,           // z.B. "FORM_METZ_WE_HUHN"
-    label,        // "Metzgerei – WE Hühnerbein"
-    sectionKey,   // "we-huhn" (Slug)
-    period,       // z.B. "none" | "daily" | "weekly" | ...
-    type,         // z.B. "Einfaches Häkchenformular"
+    id,            // z.B. "FORM_METZ_WE_HUHN"
+    label,         // "Metzgerei – WE Hühnerbein"
+    sectionKey,    // "we-huhn" (Slug)
+    period,        // "none" | "daily" | "weekly" | ...
+    type,          // z.B. "Einfaches Häkchenformular"
     active = true,
-    marketId = null, // null = global
+    marketId = null,              // null = global
     categoryKey = "metzgerei",
-  } = body;
+    schemaJson,                   // optional: explizites JSON-Schema aus dem Client
+  } = body ?? {};
 
   if (!id || !label || !sectionKey) {
     return NextResponse.json(
@@ -54,24 +54,32 @@ export async function POST(req: Request) {
   }
 
   try {
+    // Wenn kein schemaJson im Body: aus 'type' ein Default-Schema ableiten
+    const rawSchema = schemaJson ?? schemaFromType(String(type ?? ""));
+
+    // Prisma erwartet: InputJsonValue | JsonNull
+    const schema: Prisma.InputJsonValue | Prisma.JsonNull =
+      rawSchema == null ? Prisma.JsonNull : (rawSchema as Prisma.InputJsonValue);
+
     const created = await prisma.formDefinition.create({
       data: {
-        tenantId: TENANT_ID,   
-        id,              // bewusst manuell, damit deine "technische ID" übernommen wird
-        categoryKey,     // <- feste Kategorie "metzgerei"
-        sectionKey,      // <- Slug
+        tenantId: TENANT_ID,
+        id,                    // technische ID bewusst manuell
+        categoryKey,           // Kategorie, default "metzgerei"
+        sectionKey,            // Slug
         label,
-        period: period || "none",
-        schemaJson: schemaJson as Prisma.JsonValue, 
-        active: !!active,
-        marketId: marketId ?? null,             // null = global; ansonsten form nur in diesem Markt sichtbar
+        period: period ?? "none",
+        schemaJson: schema,    // <- wichtig: korrekt getypt
+        active: Boolean(active),
+        marketId: marketId ?? null,   // null = global
         lockedForMarkets: false,
       },
     });
+
     return NextResponse.json(created, { status: 201 });
   } catch (e: any) {
     return NextResponse.json(
-      { error: e?.message || "Fehler beim Anlegen." },
+      { error: e?.message ?? "Fehler beim Anlegen." },
       { status: 500 }
     );
   }
