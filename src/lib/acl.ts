@@ -1,31 +1,31 @@
+// src/lib/acl.ts
 import { prisma } from "@/lib/prisma";
-import { RbacRole } from "@prisma/client";
+import { RoleName } from "@prisma/client";
 
+const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID ?? "default";
+
+/**
+ * Darf der Benutzer Doku-Sektionen verwalten?
+ * => true für SUPERADMIN (global) oder ADMIN (global/marktbezogen)
+ */
 export async function canManageSections(
   principalId: string,
-  tenantId: string,
   marketId?: string | null
-) {
-  // TEMP-Schutz: Wenn Model im Client fehlt, alles erlauben (lokal)
-  const hasModel = !!(prisma as any).rbacAssignment;
-  if (!hasModel) {
-    console.warn("[RBAC TEMP] prisma.rbacAssignment fehlt im Client – erlaube alles");
-    return true;
-  }
+): Promise<boolean> {
+  const roles = [RoleName.SUPERADMIN, RoleName.ADMIN];
 
-  const superAdmin = await (prisma as any).rbacAssignment.findFirst({
-    where: { tenantId, marketId: null, principalId, role: RbacRole.SUPERADMIN },
+  const match = await prisma.rbacAssignment.findFirst({
+    where: {
+      tenantId: TENANT_ID,
+      principalId,
+      role: { in: roles },
+      // global (marketId=null) zählt immer; bei gesetztem Markt auch der spezifische
+      OR: marketId ? [{ marketId }, { marketId: null }] : [{ marketId: null }],
+    },
+    select: { id: true },
   });
-  if (superAdmin) return true;
 
-  if (marketId) {
-    const admin = await (prisma as any).rbacAssignment.findFirst({
-      where: { tenantId, marketId, principalId, role: RbacRole.ADMIN },
-    });
-    if (admin) return true;
-  }
-  return false;
+  return !!match;
 }
-
 
 

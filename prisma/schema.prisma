@@ -1,6 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
+// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,33 +9,34 @@ datasource db {
 }
 
 // ----------------------------------------------------
-// Formsystem (Monatsblätter / Tages-Einträge)
+// Formsystem
 // ----------------------------------------------------
 
 model FormDefinition {
-  id               String         @id @default(cuid())
-  tenantId         String
-  categoryKey      String
-  sectionKey       String
-  label            String
-  period           String
-  schemaJson       Json
-  active           Boolean        @default(true)
-  // 🔹 NEU:
-  marketId         String? // null = global; sonst nur in diesem Markt sichtbar
-  lockedForMarkets Boolean        @default(false) // true = Markt-Admins dürfen nicht ändern
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  // 👉 Gegenfeld zur Relation in FormInstance:
-  instances        FormInstance[]
+  id                 String         @id @default(cuid())
+  tenantId           String         @default("default")
+  categoryKey        String
+  sectionKey         String
+  label              String
+  period             String
+  schemaJson         Json
+  active             Boolean        @default(true)
 
-  @@index([tenantId, sectionKey, active])
+  marketId           String?        // null = global; sonst nur in diesem Markt sichtbar
+  lockedForMarkets   Boolean        @default(false)
+
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  instances          FormInstance[]
+
+  @@index([tenantId, sectionKey, active, marketId])
 }
 
 model FormInstance {
   id               String         @id @default(cuid())
-  tenantId         String
-  marketId         String
+  tenantId         String         @default("default")
+  marketId         String?
   formDefinitionId String
   year             Int
   periodRef        String
@@ -46,6 +45,7 @@ model FormInstance {
   createdBy        String?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
+
   definition       FormDefinition @relation(fields: [formDefinitionId], references: [id])
   entries          FormEntry[]
 
@@ -61,6 +61,7 @@ model FormEntry {
   completedBy    String?
   signatureType  String?
   signatureMeta  Json?
+  tenantId       String       @default("default")
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   instance       FormInstance @relation(fields: [formInstanceId], references: [id])
@@ -70,7 +71,7 @@ model FormEntry {
 
 model DokuSection {
   id          String   @id @default(cuid())
-  tenantId    String
+  tenantId    String   @default("default")
   marketId    String? // null = global
   categoryKey String   @default("dokumentation")
   slug        String
@@ -86,7 +87,7 @@ model DokuSection {
 
 model RbacAssignment {
   id          String   @id @default(cuid())
-  tenantId    String
+  tenantId    String   @default("default")
   marketId    String?
   principalId String
   role        RoleName
@@ -94,9 +95,7 @@ model RbacAssignment {
   updatedAt   DateTime @updatedAt
 
   @@unique([tenantId, marketId, principalId, role])
-  // Globale Rollen (SUPERADMIN ohne Markt)
   @@unique([tenantId, principalId, role])
-  // Markt-spezifische Rollen (ADMIN, STAFF)
   @@index([tenantId, marketId, principalId, role])
 }
 
@@ -108,9 +107,9 @@ enum RoleName {
 
 model StaffProfile {
   id        String   @id @default(cuid())
-  tenantId  String
+  tenantId  String   @default("default")
   marketId  String?
-  username  String?  @unique // ⬅️ optional machen
+  username  String?  @unique
   pinHash   String
   initials  String
   active    Boolean  @default(true)
@@ -119,4 +118,12 @@ model StaffProfile {
 
   @@unique([tenantId, marketId, initials])
   @@index([tenantId, marketId, active])
+}
+
+model MyMarket {
+  id        String   @id @default(uuid())
+  tenantId  String   @default("default")
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
