@@ -31,7 +31,7 @@ export default function AdminHubPage() {
 
         {/* Doku-Sektionen */}
         <Link
-          href="/dokumentation/admin" className="..."
+          href="/dokumentation/admin" 
           className="rounded-2xl border p-4 hover:bg-gray-50 block"
         >
           <h2 className="text-lg font-semibold">Doku-Sektionen</h2>
