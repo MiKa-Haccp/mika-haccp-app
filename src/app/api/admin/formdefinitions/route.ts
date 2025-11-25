@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client"; 
+
+const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID ?? "default";
 
 // Hilfsfunktion: Standard-Schema anhand des Typs
 function schemaFromType(type: string) {
@@ -53,14 +56,15 @@ export async function POST(req: Request) {
   try {
     const created = await prisma.formDefinition.create({
       data: {
+        tenantId: TENANT_ID,   
         id,              // bewusst manuell, damit deine "technische ID" übernommen wird
         categoryKey,     // <- feste Kategorie "metzgerei"
         sectionKey,      // <- Slug
         label,
         period: period || "none",
-        schemaJson: schemaFromType(type),
+        schemaJson: schemaJson as Prisma.JsonValue, 
         active: !!active,
-        marketId,             // null = global; ansonsten form nur in diesem Markt sichtbar
+        marketId: marketId ?? null,             // null = global; ansonsten form nur in diesem Markt sichtbar
         lockedForMarkets: false,
       },
     });
