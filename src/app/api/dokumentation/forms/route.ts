@@ -1,40 +1,44 @@
+// src/app/api/dokumentation/forms/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
-export const dynamic = "force-dynamic";
+const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID ?? "default";
 
-function normalizeMarketId(raw: string | null): string | null {
-  if (raw == null) return null;
-  const v = String(raw).trim().toLowerCase();
-  if (v === "" || v === "null" || v === "undefined") return null;
-  return raw;
-}
+const norm = (v: unknown) => {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return !s || s.toLowerCase() === "null" || s.toLowerCase() === "undefined" ? null : s;
+};
 
-// GET /api/dokumentation/forms?category=metzgerei&marketId=<id|''|'null'>
 export async function GET(req: Request) {
-  try {
-    const { searchParams } = new URL(req.url);
-    const category = (searchParams.get("category") || "metzgerei").trim();
-    const marketId = normalizeMarketId(searchParams.get("marketId"));
+  const url = new URL(req.url);
+  const category = url.searchParams.get("category") ?? "metzgerei";
+  const marketId = norm(url.searchParams.get("marketId"));
 
-    // Zwei Queries (robust, ohne NULL-Equals), dann mergen:
-    const globalsPromise = prisma.formDefinition.findMany({
-      where: { active: true, category: category, marketId: { equals: null } },
-      orderBy: [{ label: "asc" }],
-    });
+  const baseWhere = {
+    tenantId: TENANT_ID,
+    active: true,
+    categoryKey: category,
+  } as const;
 
-    const marketPromise = marketId
-      ? prisma.formDefinition.findMany({
-          where: { active: true, categoryKey: category, marketId },
-          orderBy: [{ label: "asc" }],
-        })
-      : Promise.resolve([]);
+  // globale Definitionen (marketId = null)
+  const globalsPromise = prisma.formDefinition.findMany({
+    where: { ...baseWhere, marketId: { equals: null } },
+    orderBy: [{ label: "asc" }],
+  });
 
-    const [globals, market] = await Promise.all([globalsPromise, marketPromise]);
-    const items = marketId ? [...globals, ...market] : globals;
+  // marktbezogene Definitionen nur laden, wenn marketId vorhanden ist
+  const marketPromise = marketId
+    ? prisma.formDefinition.findMany({
+        where: { ...baseWhere, marketId: { equals: marketId as string } },
+        orderBy: [{ label: "asc" }],
+      })
+    : Promise.resolve([]);
 
-    return NextResponse.json({ ok: true, items }, { status: 200 });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "Serverfehler" }, { status: 500 });
-  }
+  const [globals, marketSpecific] = await Promise.all([globalsPromise, marketPromise]);
+
+  // zusammenführen (ohne Duplikate nach id)
+  const definitions = Array.from(new Map([...globals, ...marketSpecific].map(d => [d.id, d])).values());
+
+  return NextResponse.json({ ok: true, marketId, definitions });
 }

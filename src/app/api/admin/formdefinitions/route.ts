@@ -7,7 +7,6 @@ const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID ?? "default";
 
 // Hilfsfunktion: Standard-Schema anhand des Typs
 function schemaFromType(type: string) {
-  // Später gerne ausbauen (reinigung, wareneingang, liste, ...)
   if (type === "checklist" || type === "Einfaches Häkchenformular") {
     return {
       type: "checklist",
@@ -35,15 +34,15 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const body = await req.json();
   const {
-    id,            // z.B. "FORM_METZ_WE_HUHN"
-    label,         // "Metzgerei – WE Hühnerbein"
-    sectionKey,    // "we-huhn" (Slug)
-    period,        // "none" | "daily" | "weekly" | ...
-    type,          // z.B. "Einfaches Häkchenformular"
+    id,
+    label,
+    sectionKey,
+    period,
+    type,
     active = true,
-    marketId = null,              // null = global
+    marketId = null,
     categoryKey = "metzgerei",
-    schemaJson,                   // optional: explizites JSON-Schema aus dem Client
+    schemaJson,
   } = body ?? {};
 
   if (!id || !label || !sectionKey) {
@@ -54,24 +53,28 @@ export async function POST(req: Request) {
   }
 
   try {
-    // Wenn kein schemaJson im Body: aus 'type' ein Default-Schema ableiten
-    const rawSchema = schemaJson ?? schemaFromType(String(type ?? ""));
+    // Rohschema: entweder aus Body oder aus Typ ableiten
+    const rawSchema =
+      (schemaJson ?? schemaFromType(String(type ?? ""))) as
+        | Prisma.InputJsonValue
+        | null;
 
-    // Prisma erwartet: InputJsonValue | JsonNull
-    const schema: Prisma.InputJsonValue | Prisma.JsonNull =
-      rawSchema == null ? Prisma.JsonNull : (rawSchema as Prisma.InputJsonValue);
+    // Typ **Prisma.NullTypes.JsonNull** für die Annotation verwenden,
+    // Wert **Prisma.JsonNull** zum Setzen eines echten JSON-Nulls
+    const schema: Prisma.InputJsonValue | Prisma.NullTypes.JsonNull =
+      rawSchema === null ? Prisma.JsonNull : rawSchema;
 
     const created = await prisma.formDefinition.create({
       data: {
         tenantId: TENANT_ID,
-        id,                    // technische ID bewusst manuell
-        categoryKey,           // Kategorie, default "metzgerei"
-        sectionKey,            // Slug
+        id,
+        categoryKey,
+        sectionKey,
         label,
         period: period ?? "none",
-        schemaJson: schema,    // <- wichtig: korrekt getypt
+        schemaJson: schema,
         active: Boolean(active),
-        marketId: marketId ?? null,   // null = global
+        marketId: marketId ?? null, // null = global
         lockedForMarkets: false,
       },
     });
