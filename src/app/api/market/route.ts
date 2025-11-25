@@ -1,13 +1,14 @@
 // src/app/api/market/route.ts
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+
+const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID ?? "default";
 
 export async function GET() {
-  // Temporärer Stub, bis das Market-Model in Prisma existiert
-  return NextResponse.json({
-    ok: true,
-    markets: [
-      { id: "GLOBAL", name: "Global" },
-      { id: "TEST", name: "Testmarkt" },
-    ],
+  const markets = await prisma.myMarket.findMany({
+    where: { tenantId: TENANT_ID },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
   });
+  return NextResponse.json({ ok: true, markets });
 }
