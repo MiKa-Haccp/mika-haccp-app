@@ -6,7 +6,7 @@ type Section = { id: string; slug: string; label: string; status?: "ok"|"open"; 
 
 export function useDokuSections() {
   const [sections, setSections] = useState<Section[]>([]);
-  const [isLoading, setLoading] = useState(true);
+  const [Loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
 
   useEffect(() => {
@@ -60,7 +60,7 @@ export function useDokuSections() {
     };
   }, []);
 
-  return { sections, isLoading, error };
+  return { sections, Loading, error };
 }
 
 

@@ -65,11 +65,11 @@ export default function DokuHalbjahrReinigungPage() {
       setStatus("loading");
       setErrorMsg(null);
 
-      const params = new URLSearchParams({
-        definitionId: "FORM_METZ_HALBJ_REINIGUNG",
-        marketId,
-        periodRef,
-      });
++     const params = new URLSearchParams({
++       definitionId: "FORM_METZ_HALBJ_REINIGUNG",
++       periodRef: String(periodRef),
++       ...(marketId ? { marketId } : {}),
++     });
 
       try {
         const res = await fetch(`/api/forms/entries/month?${params}`, {
