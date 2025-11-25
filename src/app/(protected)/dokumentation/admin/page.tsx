@@ -30,7 +30,7 @@ function slugify(s: string) {
 
 export default function DokuAdminPage() {
   const [tenantId] = useState("T1");
-  const { markets, isLoading: marketsLoading } = useMyMarkets();
+  const { markets, loading: marketsLoading } = useMyMarkets();
   const [marketId, setMarketId] = useState<string | null>(null); // null = global
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
