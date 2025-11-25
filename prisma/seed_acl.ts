@@ -1,8 +1,9 @@
+// @ts-nocheck
 import "dotenv/config";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
-const TENANT_ID = "default"; // <— passend zu deiner API
+const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID ?? "default";
 
 async function main() {
   await prisma.rbacAssignment.upsert({
@@ -12,11 +13,16 @@ async function main() {
       tenantId: TENANT_ID,
       principalId: "dev-root",
       marketId: null,
-      role: Prisma.RbacRole.SUPERADMIN, // <— hier der Trick
+      role: "SUPERADMIN", // String-Literal statt Enum
     },
     update: {},
   });
   console.log("✅ RBAC-Seed: SUPERADMIN=dev-root");
 }
 
-main().finally(() => prisma.$disconnect());
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(() => prisma.$disconnect());
