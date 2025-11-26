@@ -1,54 +1,37 @@
-"use client";
-
 import Link from "next/link";
 
-export default function DokuOverviewPage() {
+export default function DokuIndexPage() {
   return (
-    <main className="p-6 space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold mb-1">Dokumentation</h1>
-        <p className="text-sm opacity-70">
-          Wähle einen Bereich, für den du die Dokumentation ansehen möchtest.
-          Die Daten kommen aus den jeweiligen Erfassungsseiten (Allgemein,
-          Markt, Metzgerei).
-        </p>
-      </header>
+    <main className="py-6">
+      <h1 className="text-2xl font-extrabold mb-4">
+        <span className="mika-brand">Dokumentation</span>
+      </h1>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-3">
         <Link
           href="/dokumentation/allgemein"
-          className="rounded-2xl border p-4 hover:bg-gray-50"
+          className="rounded-2xl p-5 mika-card shadow block hover:shadow-lg transition"
         >
-          <h2 className="text-lg font-semibold">Allgemein</h2>
-          <p className="text-sm opacity-70 mt-1">
-            Jahres- oder Quartals-Dokumentationen aus dem allgemeinen Bereich.
-          </p>
+          <h3 className="text-lg font-semibold mika-brand">Allgemein</h3>
+          <p className="opacity-70 text-sm">Globale Nachweise & Hinweise</p>
         </Link>
 
         <Link
           href="/dokumentation/markt"
-          className="rounded-2xl border p-4 hover:bg-gray-50"
+          className="rounded-2xl p-5 mika-card shadow block hover:shadow-lg transition"
         >
-          <h2 className="text-lg font-semibold">Markt</h2>
-          <p className="text-sm opacity-70 mt-1">
-            Dokumentationen für Markt-Formulare (z.&nbsp;B. Lager, Verkaufsraum).
-          </p>
+          <h3 className="text-lg font-semibold mika-brand">Markt</h3>
+          <p className="opacity-70 text-sm">Markt­bezogene Nachweise</p>
         </Link>
 
         <Link
           href="/dokumentation/metzgerei"
-          className="rounded-2xl border p-4 hover:bg-gray-50"
+          className="rounded-2xl p-5 mika-card shadow block hover:shadow-lg transition"
         >
-          <h2 className="text-lg font-semibold">Metzgerei</h2>
-          <p className="text-sm opacity-70 mt-1">
-            Bereits vorhandene Dokumentationen: tägliche Reinigung, wöchentliche
-            Reinigung, Wareneingänge usw.
-          </p>
+          <h3 className="text-lg font-semibold mika-brand">Metzgerei</h3>
+          <p className="opacity-70 text-sm">Formulare & Doku in der Metzgerei</p>
         </Link>
-      </section>
+      </div>
     </main>
   );
 }
-
-
-

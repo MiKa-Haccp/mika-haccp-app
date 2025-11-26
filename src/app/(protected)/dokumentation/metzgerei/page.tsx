@@ -1,76 +1,75 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMarket } from "@/components/MarketProvider";
 
-type Def = { id: string; label: string; sectionKey: string | null; period: string | null; marketId: string | null };
-"use client";
-
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { useMarket } from "@/components/MarketProvider";
-
-type Def = {
+type Item = {
   id: string;
   label: string;
-  sectionKey: string | null;
+  slug: string;
   period: string | null;
   marketId: string | null;
 };
 
-export default function MetzgereiDokuPage() {
+export default function DokuMetzgereiPage() {
   const { selected } = useMarket();
-  const [definitions, setDefinitions] = useState<Def[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let alive = true;
     (async () => {
-      setLoading(true);
       try {
-        const q = selected?.id ? `?marketId=${selected.id}` : "";
-        const res = await fetch(`/api/doku/metzgerei/defs${q}`, { cache: "no-store" });
+        const res = await fetch("/api/doku/metzgerei/defs", { cache: "no-store" });
         const json = await res.json().catch(() => ({}));
-        setDefinitions(json?.items ?? []);
-      } catch {
-        setDefinitions([]);
+        if (alive && res.ok && json?.ok) setItems(json.items ?? []);
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
       }
     })();
-  }, [selected?.id]);
+    return () => { alive = false; };
+  }, []);
+
+  // wie im Hauptbereich: Global immer zeigen, dazu Markt-spezifische nur für den selektierten Markt
+  const visible = useMemo(() => {
+    if (!selected?.id) return items.filter(i => i.marketId === null);
+    return items.filter(i => i.marketId === null || i.marketId === selected.id);
+  }, [items, selected?.id]);
 
   return (
-    <main className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Dokumentation · Metzgerei</h1>
+    <main className="p-6 space-y-4">
+      <h1 className="text-xl font-bold">Dokumentation · Metzgerei</h1>
+      <p className="text-sm opacity-70">
+        Kontext: {selected?.id ? `Markt: ${selected.name}` : "Global / alle Märkte"}
+      </p>
+
+      {!loading && visible.length === 0 && (
+        <p className="text-sm opacity-70">Keine Formulare gefunden.</p>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {(definitions ?? []).map((def) => (
-          <div key={def.id} className="rounded-2xl border p-4">
+        {visible.map((it) => (
+          <div key={it.id} className="rounded-2xl border p-4">
             <div className="text-xs opacity-60 mb-1">
-              {def.marketId ? "Markt-spezifisch" : "Global"} · Zeitraum: {def.period ?? "–"}
+              Sichtbarkeit: {it.marketId ? "Markt" : "Global"} · Zeitraum: {it.period ?? "–"}
             </div>
-            <div className="font-semibold mb-2">{def.label}</div>
-
-            {def.sectionKey && (
+            <div className="font-semibold mb-2">{it.label}</div>
+            <div className="flex gap-2">
               <Link
                 className="rounded border text-xs px-3 py-1"
                 href={
                   selected?.id
-                    ? `/dokumentation/metzgerei/${def.sectionKey}?marketId=${selected.id}`
-                    : `/dokumentation/metzgerei/${def.sectionKey}`
+                    ? `/dokumentation/metzgerei/${it.slug}?marketId=${selected.id}`
+                    : `/dokumentation/metzgerei/${it.slug}`
                 }
               >
                 Öffnen
               </Link>
-            )}
+            </div>
           </div>
         ))}
       </div>
-
-      {!loading && !definitions?.length && (
-        <p className="opacity-70 text-sm mt-4">Keine Formulare gefunden.</p>
-      )}
     </main>
   );
 }

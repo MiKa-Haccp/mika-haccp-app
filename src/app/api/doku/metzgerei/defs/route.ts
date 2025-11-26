@@ -1,27 +1,42 @@
 // src/app/api/doku/metzgerei/defs/route.ts
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-const TENANT = process.env.NEXT_PUBLIC_TENANT_ID || "T1";
+const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID ?? "default";
 
-export async function GET(req: NextRequest) {
-  const url = new URL(req.url);
-  const marketId = url.searchParams.get("marketId") || undefined;
+function slugify(input: string) {
+  return input
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^\w\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+}
 
-  // Zeige: alle aktiven Formulare der Kategorie "metzgerei" für den Tenant
-  // mit Sichtbarkeit: global ODER aktueller Markt
-  const where = {
-    tenantId: TENANT,
-    active: true,
-    categoryKey: "metzgerei",
-    OR: [{ marketId: null }, ...(marketId ? [{ marketId }] : [])],
-  } as const;
+export async function GET() {
+  try {
+    const defs = await prisma.formDefinition.findMany({
+      where: {
+        categoryKey: "metzgerei",
+        active: true,
+        tenantId: { in: [TENANT_ID, "default"] }, // <— WICHTIG
+      },
+      select: { id: true, label: true, sectionKey: true, period: true, marketId: true },
+      orderBy: [{ sectionKey: "asc" }, { label: "asc" }],
+    });
 
-  const rows = await prisma.formDefinition.findMany({
-    where,
-    orderBy: [{ sectionKey: "asc" }, { label: "asc" }],
-    select: { id: true, label: true, sectionKey: true, period: true, marketId: true },
-  });
+    const items = defs.map((d) => ({
+      id: d.id,
+      label: d.label,
+      slug: d.sectionKey?.trim() ? d.sectionKey : slugify(d.label),
+      period: d.period,
+      marketId: d.marketId,
+    }));
 
-  return NextResponse.json({ ok: true, items: rows });
+    return NextResponse.json({ ok: true, items });
+  } catch (e) {
+    console.error("[/api/doku/metzgerei/defs] error:", e);
+    return NextResponse.json({ ok: false, error: "Serverfehler" }, { status: 500 });
+  }
 }

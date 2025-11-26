@@ -59,7 +59,7 @@ export default function MetzgereiPage() {
       return;
     }
     try {
-      const res = await fetch("/api/metzgerei", {
+      const res = await fetch("/api/forms/start", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ definitionId: defId, marketId: selected.id }),
