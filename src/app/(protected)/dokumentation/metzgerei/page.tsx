@@ -1,54 +1,75 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useMarket } from "@/components/MarketProvider";
 
-type Def = { id: string; label: string; sectionKey: string; marketId: string | null };
+type Def = { id: string; label: string; sectionKey: string | null; period: string | null; marketId: string | null };
+"use client";
 
-export default function DokuMetzgereiIndex() {
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useMarket } from "@/components/MarketProvider";
+
+type Def = {
+  id: string;
+  label: string;
+  sectionKey: string | null;
+  period: string | null;
+  marketId: string | null;
+};
+
+export default function MetzgereiDokuPage() {
   const { selected } = useMarket();
-  const marketId = selected?.id ?? null;
-
-  const [defs, setDefs] = useState<Def[]>([]);
+  const [definitions, setDefinitions] = useState<Def[]>([]);
   const [loading, setLoading] = useState(true);
 
-  async function load() {
-    setLoading(true);
-    try {
-      const url = marketId ? `/api/metzgerei?marketId=${encodeURIComponent(marketId)}` : `/api/metzgerei`;
-      const text = await fetch(url, { cache: "no-store" }).then(r => r.text());
-      const json = text ? JSON.parse(text) : {};
-      const list: Def[] = (json.definitions ?? []).map((d: any) => ({
-        id: d.id, label: d.label, sectionKey: d.sectionKey, marketId: d.marketId
-      }));
-      setDefs(list);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [marketId]);
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const q = selected?.id ? `?marketId=${selected.id}` : "";
+        const res = await fetch(`/api/doku/metzgerei/defs${q}`, { cache: "no-store" });
+        const json = await res.json().catch(() => ({}));
+        setDefinitions(json?.items ?? []);
+      } catch {
+        setDefinitions([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [selected?.id]);
 
   return (
-    <main className="py-6">
-      <h1 className="text-2xl font-extrabold mb-4"><span className="mika-brand">Dokumentation · Metzgerei</span></h1>
-      {loading && <p className="text-sm">Lade…</p>}
-      {!loading && defs.length === 0 && <p className="text-sm opacity-70">Keine Formulare gefunden.</p>}
+    <main className="p-6">
+      <h1 className="text-2xl font-bold mb-4">Dokumentation · Metzgerei</h1>
 
-      {!loading && defs.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {defs.map((d) => (
-            <Link
-              key={d.id}
-              href={`/dokumentation/metzgerei/${encodeURIComponent(d.sectionKey)}`}
-              className="rounded-2xl p-5 mika-card shadow block hover:shadow-lg transition"
-            >
-              <h3 className="text-lg font-semibold">{d.label}</h3>
-              <p className="opacity-70 text-sm">{d.marketId ? "Markt-spezifisch" : "Global"}</p>
-            </Link>
-          ))}
-        </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {(definitions ?? []).map((def) => (
+          <div key={def.id} className="rounded-2xl border p-4">
+            <div className="text-xs opacity-60 mb-1">
+              {def.marketId ? "Markt-spezifisch" : "Global"} · Zeitraum: {def.period ?? "–"}
+            </div>
+            <div className="font-semibold mb-2">{def.label}</div>
+
+            {def.sectionKey && (
+              <Link
+                className="rounded border text-xs px-3 py-1"
+                href={
+                  selected?.id
+                    ? `/dokumentation/metzgerei/${def.sectionKey}?marketId=${selected.id}`
+                    : `/dokumentation/metzgerei/${def.sectionKey}`
+                }
+              >
+                Öffnen
+              </Link>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {!loading && !definitions?.length && (
+        <p className="opacity-70 text-sm mt-4">Keine Formulare gefunden.</p>
       )}
     </main>
   );
