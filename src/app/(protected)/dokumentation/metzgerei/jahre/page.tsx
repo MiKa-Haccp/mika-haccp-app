@@ -1,4 +1,3 @@
-// src/app/(protected)/dokumentation/metzgerei/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -15,8 +14,7 @@ type MarketResponse = {
   };
 };
 
-export default function MetzgereiDokuYearsPage() {
-  const [marketId, setMarketId] = useState<string | null>(null);
+export default function MetzgereiJahrePage() {
   const [marketName, setMarketName] = useState<string | null>(null);
   const [years, setYears] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,14 +24,15 @@ export default function MetzgereiDokuYearsPage() {
     async function load() {
       try {
         // 1) Markt laden
+        const marketRes = await fetch("/api/market", { cache: "no-store" });
+        if (!marketRes.ok) throw new Error("Markt konnte nicht geladen werden");
         const marketData: MarketResponse = await marketRes.json();
         const m = marketData.myMarket;
         if (!m?.id) {
-          setError("Kein Markt ausgewählt. Bitte oben im Kopfbereich einen Markt wählen.");
+          setError("Kein Markt gewählt. Bitte oben im Kopfbereich einen Markt auswählen.");
           setLoading(false);
           return;
         }
-        setMarketId(m.id);
         setMarketName(m.name);
 
         // 2) Jahre laden
@@ -59,13 +58,19 @@ export default function MetzgereiDokuYearsPage() {
   return (
     <main className="py-6">
       <h1 className="text-2xl font-extrabold mb-2">
-        <span className="mika-brand">Dokumentation Metzgerei</span>
+        <span className="mika-brand">Metzgerei – Archiv</span>
       </h1>
       {marketName && (
         <p className="text-sm opacity-70 mb-4">
           Markt: <span className="font-semibold">{marketName}</span>
         </p>
       )}
+
+      <p className="text-xs mb-3">
+        <Link href="/dokumentation/metzgerei" className="underline">
+          &larr; Zur Metzgerei-Übersicht
+        </Link>
+      </p>
 
       {loading && <p>Lade Dokumentation…</p>}
       {error && (
@@ -85,7 +90,7 @@ export default function MetzgereiDokuYearsPage() {
           {years.map((year) => (
             <Link
               key={year}
-              href={`/dokumentation/metzgerei/${year}`}
+              href={`/dokumentation/metzgerei/jahre/${year}`}
               className="rounded-2xl p-5 mika-card shadow block hover:shadow-lg transition"
             >
               <h2 className="text-lg font-semibold">
