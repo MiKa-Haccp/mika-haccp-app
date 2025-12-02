@@ -2,70 +2,76 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-export async function GET(req: Request, ctx: any) {
-  const { year } = await ctx.params; // Next 16: params ist Promise
-  const url = new URL(req.url);
-  const marketId = url.searchParams.get("marketId") ?? undefined;
-  const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID ?? "T1";
+export async function GET(
+  req: Request,
+  ctx: { params: Promise<{ year: string }> },
+) {
+  const { year } = await ctx.params; // Next 16: params ist ein Promise
+  const parsedYear = Number(year);
 
-  const parsedYear = parseInt(year, 10);
-  if (Number.isNaN(parsedYear)) {
-    return NextResponse.json({ error: "Invalid year" }, { status: 400 });
+  if (!Number.isFinite(parsedYear)) {
+    return NextResponse.json(
+      { error: "Invalid year" },
+      { status: 400 },
+    );
   }
 
   try {
     const instances = await prisma.formInstance.findMany({
+      // Wieder: KEIN tenantId / marketId Filter, um alles zu sehen,
+      // was in diesem Jahr existiert
       where: {
-        tenantId: TENANT_ID,
         year: parsedYear,
-        ...(marketId ? { marketId } : {}),
-        // category: "METZGEREI",
       },
       include: {
         definition: {
           select: {
             id: true,
-            name: true,
+            label: true, // dein Schema-Feld heißt "label", nicht "name"
           },
         },
       },
-      orderBy: [
-        { month: "asc" },
-        { createdAt: "asc" }, // falls du createdAt hast
-      ],
+      orderBy: {
+        createdAt: "asc",
+      },
     });
 
-    // Aggregation: month → instances[]
-    const monthMap: Record<
+    // periodRef z.B. "2025-11" -> Monat 11
+    const byMonth: Record<
       number,
       {
-        month: number;
-        instances: {
-          id: string;
-          definitionId: string;
-          definitionName: string;
-          status: "open" | "completed";
-        }[];
-      }
+        id: string;
+        definitionId: string;
+        definitionName: string;
+        status: "open" | "completed";
+      }[]
     > = {};
 
     for (const inst of instances) {
-      const m = (inst as any).month ?? 0; // falls du month-Feld hast; sonst aus Datum ableiten
-      if (!monthMap[m]) {
-        monthMap[m] = {
-          month: m,
-          instances: [],
-        };
+      let month = 0;
+      const match = /^(\d{4})-(\d{2})/.exec(inst.periodRef);
+      if (match) {
+        month = Number(match[2]);
       }
-      monthMap[m].instances.push({
+
+      if (!byMonth[month]) {
+        byMonth[month] = [];
+      }
+
+      byMonth[month].push({
         id: inst.id,
-        definitionId: inst.definition.id,
-        definitionName: inst.definition.name,
-        status: (inst as any).completedAt ? "completed" : "open",
+        definitionId: inst.formDefinitionId,
+        definitionName: inst.definition?.label ?? "Unbenanntes Formular",
+        status: inst.status === "completed" ? "completed" : "open",
       });
     }
 
-    const months = Object.values(monthMap).sort((a, b) => a.month - b.month);
+    const months = Object.entries(byMonth)
+      .map(([m, instances]) => ({
+        month: Number(m),
+        instances,
+      }))
+      .sort((a, b) => a.month - b.month);
 
     return NextResponse.json({
       year: parsedYear,
@@ -74,8 +80,8 @@ export async function GET(req: Request, ctx: any) {
   } catch (error) {
     console.error("GET /api/doku/metzgerei/[year]/months error", error);
     return NextResponse.json(
-      { error: "Failed to load documentation months" },
-      { status: 500 }
+      { error: "Failed to load months" },
+      { status: 500 },
     );
   }
 }

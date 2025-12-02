@@ -4,17 +4,13 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const marketId = url.searchParams.get("marketId") ?? undefined;
-  const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID ?? "T1";
+  // marketId vorerst ignorieren, damit alle Instanzen gefunden werden
+  // const marketId = url.searchParams.get("marketId") ?? undefined;
 
   try {
     const years = await prisma.formInstance.findMany({
-      where: {
-        tenantId: TENANT_ID,
-        ...(marketId ? { marketId } : {}),
-        // falls du eine Kategorie-Spalte hast:
-        // category: "METZGEREI",
-      },
+      // WICHTIG: wir filtern NICHT nach tenantId / marketId,
+      // damit auch alte Daten (default / T1 / andere Märkte) gefunden werden
       select: {
         year: true,
       },
@@ -31,7 +27,7 @@ export async function GET(req: Request) {
     console.error("GET /api/doku/metzgerei/years error", error);
     return NextResponse.json(
       { error: "Failed to load documentation years" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

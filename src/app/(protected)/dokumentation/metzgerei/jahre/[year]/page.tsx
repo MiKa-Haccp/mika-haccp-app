@@ -1,3 +1,4 @@
+// src/app/(protected)/dokumentation/metzgerei/jahre/[year]/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -53,22 +54,38 @@ export default function MetzgereiDokuYearPage() {
 
   useEffect(() => {
     if (!yearParam) return;
+
     async function load() {
+      setLoading(true);
+      setError(null);
+
       try {
-        const marketRes = await fetch("/api/market", { cache: "no-store" });
-        if (!marketRes.ok) throw new Error("Markt konnte nicht geladen werden");
+        // 1) Aktuellen Markt laden
+        const marketRes = await fetch("/api/market/current", {
+          cache: "no-store",
+        });
+        if (!marketRes.ok) {
+          throw new Error("Markt konnte nicht geladen werden");
+        }
+
         const marketData: MarketResponse = await marketRes.json();
         const m = marketData.myMarket;
-        if (!m?.id) throw new Error("Kein Markt ausgewählt");
+        if (!m?.id) {
+          throw new Error("Kein Markt ausgewählt");
+        }
         setMarketName(m.name);
 
+        // 2) Monatsübersicht für dieses Jahr + Markt laden
         const res = await fetch(
           `/api/doku/metzgerei/${yearParam}/months?marketId=${encodeURIComponent(
             m.id
           )}`,
           { cache: "no-store" }
         );
-        if (!res.ok) throw new Error("Monate konnten nicht geladen werden");
+        if (!res.ok) {
+          throw new Error("Monate konnten nicht geladen werden");
+        }
+
         const json: MonthsResponse = await res.json();
         setData(json);
         setError(null);
@@ -107,9 +124,7 @@ export default function MetzgereiDokuYearPage() {
 
       {loading && <p>Lade Monatsübersicht…</p>}
       {error && (
-        <p className="text-sm text-red-600 mb-4">
-          Fehler: {error}
-        </p>
+        <p className="text-sm text-red-600 mb-4">Fehler: {error}</p>
       )}
 
       {!loading && !error && data && data.months.length === 0 && (
@@ -127,7 +142,8 @@ export default function MetzgereiDokuYearPage() {
               className="rounded-2xl p-5 mika-card shadow block hover:shadow-lg transition"
             >
               <h2 className="text-lg font-semibold">
-                {MONTH_NAMES[monthBlock.month] || `Monat ${monthBlock.month}`}
+                {MONTH_NAMES[monthBlock.month] ||
+                  `Monat ${monthBlock.month}`}
               </h2>
               <p className="text-sm opacity-70 mb-2">
                 {monthBlock.instances.length} Formular
@@ -138,7 +154,9 @@ export default function MetzgereiDokuYearPage() {
                   <li key={inst.id}>
                     • {inst.definitionName}{" "}
                     <span className="uppercase text-[10px] ml-1">
-                      {inst.status === "completed" ? "ABGESCHLOSSEN" : "OFFEN"}
+                      {inst.status === "completed"
+                        ? "ABGESCHLOSSEN"
+                        : "OFFEN"}
                     </span>
                   </li>
                 ))}

@@ -4,32 +4,39 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
-async function main() {
-  // 👇 Vergib JEDEM Eintrag einen eindeutigen username
-  const staff = [
-    { tenantId: "T1", initials: "MD", pin: "1234", username: "md" },
-    { tenantId: "T1", initials: "AB", pin: "2345", username: "ab" },
-    // weitere Einträge nach Bedarf …
-  ];
+type SeedStaff = {
+  tenantId: string;
+  marketId?: string;   // optional, kein null nötig
+  initials: string;
+  pin: string;
+  username: string;
+};
 
+const staff: SeedStaff[] = [
+  { tenantId: "default", initials: "MD", pin: "1234", username: "md" },
+  { tenantId: "default", initials: "AB", pin: "2345", username: "ab" },
+];
+
+async function main() {
   for (const s of staff) {
     const pinHash = await bcrypt.hash(s.pin, 10);
 
     await prisma.staffProfile.upsert({
-      // nutzt dein Composite-Unique @@unique([tenantId, initials])
+      // username ist @unique → perfekt als Schlüssel
       where: {
-        tenantId_initials: { tenantId: s.tenantId, initials: s.initials },
+        username: s.username,
       },
       update: {
-        // du kannst hier bei Bedarf auch username pflegen, falls er sich ändert:
-        username: s.username,
+        tenantId: s.tenantId,
+        initials: s.initials,
+        ...(s.marketId ? { marketId: s.marketId } : {}), // nur setzen, wenn vorhanden
         pinHash,
         active: true,
       },
       create: {
         tenantId: s.tenantId,
-        marketId: null,           // optional, kann auch weggelassen werden
-        username: s.username,     // <-- WAR bisher der fehlende Pflichtwert
+        ...(s.marketId ? { marketId: s.marketId } : {}),
+        username: s.username,
         initials: s.initials,
         pinHash,
         active: true,
@@ -48,4 +55,3 @@ main()
     await prisma.$disconnect();
     process.exit(1);
   });
-

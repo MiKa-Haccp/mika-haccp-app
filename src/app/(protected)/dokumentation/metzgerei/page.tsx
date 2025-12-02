@@ -1,101 +1,156 @@
 // src/app/(protected)/dokumentation/metzgerei/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useMarket } from "@/components/MarketProvider";
 
-type YearResponse = {
-  years: number[];
+type FormSummary = {
+  id: string;
+  label: string;
+  period: string | null;
+  marketId: string | null;
+  sectionKey: string;
 };
 
-type MarketResponse = {
-  myMarket?: {
-    id: string;
-    name: string;
-  };
+type FormsResponse = {
+  forms: FormSummary[];
 };
 
-export default function MetzgereiDokuYearsPage() {
-  const [marketId, setMarketId] = useState<string | null>(null);
-  const [marketName, setMarketName] = useState<string | null>(null);
-  const [years, setYears] = useState<number[]>([]);
+export default function MetzgereiDokuPage() {
+  const { selected } = useMarket();
+
+  const [forms, setForms] = useState<FormSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<"label" | "period">("label");
 
   useEffect(() => {
-    async function load() {
-      try {
-        // 1) Markt laden
-        const marketData: MarketResponse = await marketRes.json();
-        const m = marketData.myMarket;
-        if (!m?.id) {
-          setError("Kein Markt ausgewählt. Bitte oben im Kopfbereich einen Markt wählen.");
-          setLoading(false);
-          return;
-        }
-        setMarketId(m.id);
-        setMarketName(m.name);
+    const marketId = selected?.id;
 
-        // 2) Jahre laden
-        const yearsRes = await fetch(
-          `/api/doku/metzgerei/years?marketId=${encodeURIComponent(m.id)}`,
+    // Kein Markt gewählt → Meldung + nichts laden
+    if (!marketId) {
+      setForms([]);
+      setError("Kein Markt ausgewählt. Bitte oben im Kopfbereich einen Markt wählen.");
+      setLoading(false);
+      return;
+    }
+
+    async function load(currentMarketId: string) {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(
+          `/api/doku/metzgerei/forms?marketId=${encodeURIComponent(marketId)}`,
           { cache: "no-store" }
         );
-        if (!yearsRes.ok) throw new Error("Jahre konnten nicht geladen werden");
-        const data: YearResponse = await yearsRes.json();
-        setYears(data.years || []);
-        setError(null);
+
+        if (!res.ok) {
+          throw new Error("Formulare konnten nicht geladen werden");
+        }
+
+        const json: FormsResponse = await res.json();
+        setForms(json.forms ?? []);
       } catch (err: any) {
         console.error(err);
-        setError(err.message ?? "Unbekannter Fehler");
+       setError(err.message ?? "Unbekannter Fehler");
       } finally {
         setLoading(false);
       }
     }
 
-    load();
-  }, []);
+    load(marketId);
+  }, [selected?.id]);
+
+  const sortedForms = useMemo(() => {
+    const list = [...forms];
+    if (sortBy === "label") {
+      list.sort((a, b) => a.label.localeCompare(b.label));
+    } else {
+      list.sort((a, b) => {
+        const pa = a.period ?? "";
+        const pb = b.period ?? "";
+        if (pa === pb) return a.label.localeCompare(b.label);
+        return pa.localeCompare(pb);
+      });
+    }
+    return list;
+  }, [forms, sortBy]);
+
+  // ⬇️ Ab hier ist React glücklich, weil ALLE Hooks schon oben aufgerufen wurden
+
+  // Falls selected wirklich null ist (z.B. MarketProvider noch am Laden)
+  if (!selected) {
+    return (
+      <main className="py-6">
+        <h1 className="text-2xl font-extrabold mb-2">
+          <span className="mika-brand">Dokumentation Metzgerei</span>
+        </h1>
+        <p className="text-sm text-red-600">
+          Kein Markt ausgewählt. Bitte oben im Kopfbereich einen Markt wählen.
+        </p>
+      </main>
+    );
+  }
 
   return (
     <main className="py-6">
       <h1 className="text-2xl font-extrabold mb-2">
         <span className="mika-brand">Dokumentation Metzgerei</span>
       </h1>
-      {marketName && (
-        <p className="text-sm opacity-70 mb-4">
-          Markt: <span className="font-semibold">{marketName}</span>
-        </p>
-      )}
 
-      {loading && <p>Lade Dokumentation…</p>}
+      <p className="text-sm opacity-70 mb-4">
+        Markt: <span className="font-semibold">{selected.name}</span>
+      </p>
+
+      {/* Sortierung */}
+      <div className="mb-4 flex items-center gap-2">
+        <span className="text-xs opacity-70">Sortierung:</span>
+        <select
+          className="border rounded px-2 py-1 text-xs"
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as "label" | "period")}
+        >
+          <option value="label">Name (A–Z)</option>
+          <option value="period">Zeitraum</option>
+        </select>
+      </div>
+
+      {loading && <p>Lade Formulare…</p>}
+
       {error && (
         <p className="text-sm text-red-600 mb-4">
           Fehler: {error}
         </p>
       )}
 
-      {!loading && !error && years.length === 0 && (
+      {!loading && !error && sortedForms.length === 0 && (
         <p className="text-sm opacity-70">
-          Es wurden noch keine Monatsformulare für diesen Markt angelegt.
+          Es sind noch keine Metzgerei-Formulare für diesen Markt vorhanden.
         </p>
       )}
 
-      {!loading && !error && years.length > 0 && (
+      {!loading && !error && sortedForms.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-          {years.map((year) => (
-            <Link
-              key={year}
-              href={`/dokumentation/metzgerei/${year}`}
-              className="rounded-2xl p-5 mika-card shadow block hover:shadow-lg transition"
-            >
-              <h2 className="text-lg font-semibold">
-                Jahr {year}
-              </h2>
-              <p className="text-sm opacity-70">
-                Übersicht aller Metzgerei-Formblätter in {year}.
-              </p>
-            </Link>
-          ))}
+          {sortedForms.map((f) => {
+            const scopeLabel = f.marketId ? "Markt-spezifisch" : "Global";
+
+            return (
+              <Link
+                key={f.id}
+                href={`/dokumentation/metzgerei/${f.sectionKey}`}
+                className="rounded-2xl p-5 mika-card shadow block hover:shadow-lg transition"
+              >
+                <div className="text-xs opacity-60 mb-1">
+                  {scopeLabel} · Zeitraum: {f.period ?? "–"}
+                </div>
+                <div className="font-semibold mb-2">{f.label}</div>
+                <p className="text-xs opacity-70">
+                  Monatsübersicht &amp; Einträge für dieses Formular ansehen.
+                </p>
+              </Link>
+            );
+          })}
         </div>
       )}
     </main>

@@ -1,3 +1,4 @@
+// src/app/(protected)/dokumentation/metzgerei/jahre/[year]/[month]/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -42,13 +43,10 @@ const MONTH_NAMES = [
   "Dezember",
 ];
 
-export default function MetzgereiDokuMonthInstancesPage() {
+export default function MetzgereiDokuMonthPage() {
   const params = useParams<{ year: string; month: string }>();
   const yearParam = params?.year;
   const monthParam = params?.month;
-
-  const year = Number(yearParam);
-  const month = Number(monthParam);
 
   const [marketName, setMarketName] = useState<string | null>(null);
   const [instances, setInstances] = useState<MonthInstance[]>([]);
@@ -57,29 +55,43 @@ export default function MetzgereiDokuMonthInstancesPage() {
 
   useEffect(() => {
     if (!yearParam || !monthParam) return;
+
     async function load() {
+      setLoading(true);
+      setError(null);
+
       try {
-        const marketRes = await fetch("/api/market", { cache: "no-store" });
-        if (!marketRes.ok) throw new Error("Markt konnte nicht geladen werden");
+        const marketRes = await fetch("/api/market/current", {
+          cache: "no-store",
+        });
+        if (!marketRes.ok) {
+          throw new Error("Markt konnte nicht geladen werden");
+        }
+
         const marketData: MarketResponse = await marketRes.json();
         const m = marketData.myMarket;
-        if (!m?.id) throw new Error("Kein Markt ausgewählt");
+
+        if (!m?.id) {
+          setError(
+            "Kein Markt ausgewählt. Bitte oben im Kopfbereich einen Markt wählen.",
+          );
+          setLoading(false);
+          return;
+        }
+
         setMarketName(m.name);
 
         const res = await fetch(
-          `/api/doku/metzgerei/${yearParam}/months?marketId=${encodeURIComponent(
-            m.id
-          )}`,
-          { cache: "no-store" }
+          `/api/doku/metzgerei/${yearParam}/months`,
+          { cache: "no-store" },
         );
         if (!res.ok) throw new Error("Monatsdaten konnten nicht geladen werden");
-        const json: MonthsResponse = await res.json();
 
-        const monthBlock = json.months.find(
-          (mb) => mb.month === Number(monthParam)
-        );
+        const json: MonthsResponse = await res.json();
+        const monthNum = Number(monthParam);
+        const monthBlock = json.months.find((mb) => mb.month === monthNum);
+
         setInstances(monthBlock?.instances ?? []);
-        setError(null);
       } catch (err: any) {
         console.error(err);
         setError(err.message ?? "Unbekannter Fehler");
@@ -91,16 +103,16 @@ export default function MetzgereiDokuMonthInstancesPage() {
     load();
   }, [yearParam, monthParam]);
 
+  const year = Number(yearParam);
+  const monthNum = Number(monthParam);
+
   return (
     <main className="py-6">
       <h1 className="text-2xl font-extrabold mb-1">
-        <span className="mika-brand">Metzgerei – Archiv</span>
+        <span className="mika-brand">Metzgerei – Monat</span>
       </h1>
       <p className="text-sm opacity-80 mb-1">
-        Jahr: <span className="font-semibold">{year}</span> · Monat:{" "}
-        <span className="font-semibold">
-          {MONTH_NAMES[month] || month}
-        </span>
+        {MONTH_NAMES[monthNum] || `Monat ${monthNum}`} {year}
       </p>
       {marketName && (
         <p className="text-sm opacity-70 mb-4">
@@ -113,11 +125,11 @@ export default function MetzgereiDokuMonthInstancesPage() {
           href={`/dokumentation/metzgerei/jahre/${year}`}
           className="underline"
         >
-          &larr; Zur Monatsübersicht
+          &larr; Zur Jahresübersicht
         </Link>
       </p>
 
-      {loading && <p>Lade Formblätter…</p>}
+      {loading && <p>Lade Monatsdokumentation…</p>}
       {error && (
         <p className="text-sm text-red-600 mb-4">
           Fehler: {error}
@@ -126,31 +138,26 @@ export default function MetzgereiDokuMonthInstancesPage() {
 
       {!loading && !error && instances.length === 0 && (
         <p className="text-sm opacity-70">
-          In diesem Monat wurden noch keine Metzgerei-Formblätter angelegt.
+          Für diesen Monat wurden noch keine Formblätter ausgefüllt.
         </p>
       )}
 
       {!loading && !error && instances.length > 0 && (
-        <div className="space-y-3">
+        <ul className="space-y-2 text-sm">
           {instances.map((inst) => (
-            <Link
-              key={inst.id}
-              href={`/dokumentation/metzgerei/jahre/${year}/${month}/${inst.id}`}
-              className="rounded-2xl p-4 mika-card shadow block hover:shadow-lg transition"
-            >
-              <h2 className="text-base font-semibold mb-1">
-                {inst.definitionName}
-              </h2>
-              <p className="text-xs opacity-70">
+            <li key={inst.id} className="rounded-lg border p-3">
+              <div className="font-semibold">{inst.definitionName}</div>
+              <div className="text-xs mt-1">
                 Status:{" "}
-                <span className="font-semibold">
-                  {inst.status === "completed" ? "Abgeschlossen" : "Offen"}
+                <span className="uppercase">
+                  {inst.status === "completed" ? "ABGESCHLOSSEN" : "OFFEN"}
                 </span>
-              </p>
-            </Link>
+              </div>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </main>
   );
 }
+
