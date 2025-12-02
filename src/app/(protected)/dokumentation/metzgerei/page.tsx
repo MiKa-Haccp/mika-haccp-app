@@ -41,7 +41,7 @@ export default function MetzgereiDokuPage() {
       setError(null);
       try {
         const res = await fetch(
-          `/api/doku/metzgerei/forms?marketId=${encodeURIComponent(marketId)}`,
+          `/api/doku/metzgerei/forms?marketId=${encodeURIComponent(marketId ?? "")}`,
           { cache: "no-store" }
         );
 

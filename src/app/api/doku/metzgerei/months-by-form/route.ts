@@ -1,29 +1,15 @@
-// src/app/(protected)/api/doku/metzgerei/months-by-form/route.ts
+// src/app/api/doku/metzgerei/months-by-form/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
 
-  const sectionKey = url.searchParams.get("sectionKey");
-  const marketId = url.searchParams.get("marketId");
+  const marketId = url.searchParams.get("marketId") || undefined;
   const yearParam = url.searchParams.get("year");
+  const sectionKey = url.searchParams.get("sectionKey") || undefined;
 
   const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID ?? "T1";
-
-  if (!sectionKey) {
-    return NextResponse.json(
-      { error: "Missing sectionKey" },
-      { status: 400 }
-    );
-  }
-
-  if (!marketId) {
-    return NextResponse.json(
-      { error: "Missing marketId" },
-      { status: 400 }
-    );
-  }
 
   const parsedYear = yearParam ? Number(yearParam) : new Date().getFullYear();
   if (!Number.isFinite(parsedYear)) {
@@ -33,78 +19,126 @@ export async function GET(req: Request) {
     );
   }
 
+  if (!sectionKey) {
+    return NextResponse.json(
+      { error: "Missing sectionKey" },
+      { status: 400 }
+    );
+  }
+
   try {
-    const instances = await prisma.formInstance.findMany({
+    // 1) passende FormDefinition finden (Markt-spezifisch hat Vorrang vor global)
+    const formDef = await prisma.formDefinition.findFirst({
       where: {
         tenantId: TENANT_ID,
-        marketId,
-        year: parsedYear,
-        definition: {
-          categoryKey: "metzgerei",
-          sectionKey,
-        },
+        categoryKey: "metzgerei",
+        sectionKey,
+        active: true,
+        OR: [
+          { marketId: null },
+          ...(marketId ? [{ marketId }] : []),
+        ],
       },
-      include: {
-        definition: {
-          select: {
-            id: true,
-            label: true,
-            period: true,
-            sectionKey: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: "asc",
-      },
+      orderBy: [
+        { marketId: "desc" }, // zuerst Markt-spezifisch
+        { createdAt: "asc" },
+      ],
     });
 
-    const label = instances[0]?.definition.label ?? sectionKey;
-    const period = instances[0]?.definition.period ?? null;
-
-    function extractMonth(periodRef: string | null): number | null {
-      if (!periodRef) return null;
-      const m = periodRef.match(/^\d{4}-(\d{2})/);
-      if (!m) return null;
-      const month = Number(m[1]);
-      if (!Number.isFinite(month) || month < 1 || month > 12) return null;
-      return month;
-    }
-
-    type MonthBucket = {
-      month: number;
-      instances: {
-        id: string;
-        status: string;
-        periodRef: string;
-      }[];
-    };
-
-    const buckets = new Map<number, MonthBucket>();
-
-    for (const inst of instances) {
-      const month = extractMonth(inst.periodRef);
-      if (!month) continue;
-
-      if (!buckets.has(month)) {
-        buckets.set(month, { month, instances: [] });
-      }
-      buckets.get(month)!.instances.push({
-        id: inst.id,
-        status: inst.status,
-        periodRef: inst.periodRef,
+    if (!formDef) {
+      // Kein Formular gefunden – leere Struktur zurückgeben,
+      // damit die UI trotzdem das Jahr / die Monate anzeigen kann.
+      return NextResponse.json({
+        sectionKey,
+        label: sectionKey,
+        year: parsedYear,
+        period: null,
+        months: [],
       });
     }
 
-    const months = Array.from(buckets.values()).sort(
+    // 2) Instanzen + Einträge laden
+    const instances = await prisma.formInstance.findMany({
+      where: {
+        tenantId: TENANT_ID,
+        formDefinitionId: formDef.id,
+        year: parsedYear,
+        ...(marketId ? { marketId } : {}),
+      },
+      include: {
+        entries: {
+          select: {
+            date: true,
+            dataJson: true,
+            completedBy: true,
+          },
+          orderBy: { date: "asc" },
+        },
+      },
+      orderBy: {
+        periodRef: "asc",
+      },
+    });
+
+    function summarizeEntry(entry: { dataJson: any } | undefined | null) {
+      if (!entry) return null;
+
+      const data = entry.dataJson as any;
+      const parts: string[] = [];
+
+      // ein paar generische Felder – später können wir das pro Formular-Typ
+      if (typeof data.ok === "boolean") {
+        parts.push(data.ok ? "Ware in Ordnung" : "Ware beanstandet");
+      }
+      if (data.temperature != null) {
+        parts.push(`Temp: ${data.temperature}°C`);
+      }
+      if (data.notes) {
+        parts.push(String(data.notes));
+      }
+
+      return parts.length ? parts.join(" · ") : "Eintrag vorhanden";
+    }
+
+    const monthsMap = new Map<
+      number,
+      { month: number; instances: any[] }
+    >();
+
+    for (const inst of instances) {
+      const date = inst.periodRef ? new Date(inst.periodRef) : null;
+      if (!date || Number.isNaN(date.getTime())) {
+        // periodRef ist nicht als Datum parsebar – überspringen
+        continue;
+      }
+
+      const month = date.getMonth() + 1;
+      const monthBlock =
+        monthsMap.get(month) ?? { month, instances: [] };
+
+      const lastEntry =
+        inst.entries[inst.entries.length - 1] ?? null;
+
+      monthBlock.instances.push({
+        id: inst.id,
+        periodRef: inst.periodRef,
+        status: inst.status === "completed" ? "completed" : "open",
+        completedBy: lastEntry?.completedBy ?? null,
+        summary: summarizeEntry(lastEntry),
+      });
+
+      monthsMap.set(month, monthBlock);
+    }
+
+    const months = Array.from(monthsMap.values()).sort(
       (a, b) => a.month - b.month
     );
 
     return NextResponse.json({
       sectionKey,
-      label,
+      label: formDef.label,
       year: parsedYear,
-      period,
+      period: formDef.period,
       months,
     });
   } catch (error) {
@@ -113,7 +147,7 @@ export async function GET(req: Request) {
       error
     );
     return NextResponse.json(
-      { error: "Failed to load months for section" },
+      { error: "Failed to load month data" },
       { status: 500 }
     );
   }

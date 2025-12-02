@@ -8,8 +8,10 @@ import { useMarket } from "@/components/MarketProvider";
 
 type MonthInstance = {
   id: string;
-  status: string;
   periodRef: string;
+  status: "open" | "completed";
+  completedBy?: string | null;
+  summary?: string | null;
 };
 
 type MonthsByFormResponse = {
@@ -21,6 +23,13 @@ type MonthsByFormResponse = {
     month: number;
     instances: MonthInstance[];
   }[];
+};
+
+type MarketResponse = {
+  myMarket?: {
+    id: string;
+    name: string;
+  };
 };
 
 const MONTH_NAMES = [
@@ -39,6 +48,18 @@ const MONTH_NAMES = [
   "Dezember",
 ];
 
+function getDaysInMonth(year: number, month: number) {
+  // month: 1–12
+  return new Date(year, month, 0).getDate();
+}
+
+function formatDayLabel(day: number, month: number, year: number) {
+  return `${String(day).padStart(2, "0")}.${String(month).padStart(
+    2,
+    "0"
+  )}.${year}`;
+}
+
 export default function MetzgereiFormDokuPage() {
   const params = useParams<{ slug: string }>();
   const { selected } = useMarket();
@@ -48,15 +69,20 @@ export default function MetzgereiFormDokuPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // aktuell immer aktuelles Jahr – später kann man das noch auswählbar machen
   const year = useMemo(() => new Date().getFullYear(), []);
+  const currentMonth = useMemo(
+    () => new Date().getMonth() + 1,
+    []
+  );
 
   useEffect(() => {
     const marketId = selected?.id;
 
     if (!marketId) {
       setData(null);
-      setError("Kein Markt ausgewählt. Bitte oben im Kopfbereich einen Markt wählen.");
+      setError(
+        "Kein Markt ausgewählt. Bitte oben im Kopfbereich einen Markt wählen."
+      );
       setLoading(false);
       return;
     }
@@ -95,6 +121,29 @@ export default function MetzgereiFormDokuPage() {
 
   const title = data?.label ?? slug ?? "Formular";
 
+  // Alle 12 Monate des Jahres vorbereiten, auch wenn noch keine Einträge existieren.
+  const monthBlocks = useMemo(() => {
+    const byMonth = new Map<number, MonthInstance[]>();
+
+    if (data) {
+      for (const mb of data.months) {
+        byMonth.set(mb.month, mb.instances);
+      }
+    }
+
+    const blocks: { month: number; instances: MonthInstance[] }[] =
+      [];
+
+    for (let m = 1; m <= 12; m++) {
+      blocks.push({
+        month: m,
+        instances: byMonth.get(m) ?? [],
+      });
+    }
+
+    return blocks;
+  }, [data]);
+
   return (
     <main className="py-6">
       <h1 className="text-2xl font-extrabold mb-1">
@@ -126,38 +175,105 @@ export default function MetzgereiFormDokuPage() {
         <p className="text-sm text-red-600 mb-4">Fehler: {error}</p>
       )}
 
-      {!loading && !error && data && data.months.length === 0 && (
-        <p className="text-sm opacity-70">
-          Für dieses Jahr wurden für dieses Formular noch keine Einträge angelegt.
-        </p>
-      )}
+      {!loading && !error && (
+        <div className="space-y-4">
+          {monthBlocks.map((monthBlock) => {
+            const month = monthBlock.month;
+            const name = MONTH_NAMES[month] || `Monat ${month}`;
+            const daysInMonth = getDaysInMonth(year, month);
 
-      {!loading && !error && data && data.months.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
-          {data.months.map((monthBlock) => (
-            <div
-              key={monthBlock.month}
-              className="rounded-2xl p-5 mika-card shadow block"
-            >
-              <h2 className="text-lg font-semibold mb-1">
-                {MONTH_NAMES[monthBlock.month] || `Monat ${monthBlock.month}`}
-              </h2>
-              <p className="text-sm opacity-70 mb-2">
-                {monthBlock.instances.length} Eintrag
-                {monthBlock.instances.length === 1 ? "" : "e"} im Monat.
-              </p>
-              <ul className="text-xs opacity-80 space-y-1">
-                {monthBlock.instances.map((inst) => (
-                  <li key={inst.id}>
-                    • {inst.periodRef}{" "}
-                    <span className="uppercase text-[10px] ml-1">
-                      {inst.status === "completed" ? "ABGESCHLOSSEN" : "OFFEN"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+            // Instanzen nach Tag mappen
+            const instByDay = new Map<number, MonthInstance>();
+            for (const inst of monthBlock.instances) {
+              const d = new Date(inst.periodRef);
+              if (!Number.isNaN(d.getTime())) {
+                const day = d.getDate();
+                instByDay.set(day, inst);
+              }
+            }
+
+            const totalEntries = instByDay.size;
+            const isCurrent = month === currentMonth;
+
+            return (
+              <details
+                key={month}
+                open={isCurrent}
+                className="rounded-2xl border shadow-sm"
+              >
+                <summary className="cursor-pointer px-5 py-3 flex items-center justify-between">
+                  <span className="font-semibold">{name}</span>
+                  <span className="text-xs opacity-70">
+                    {totalEntries} Eintrag
+                    {totalEntries === 1 ? "" : "e"}
+                  </span>
+                </summary>
+
+                <div className="px-5 pb-4">
+                  <table className="w-full text-xs border-t">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="text-left px-2 py-1">Datum</th>
+                        <th className="text-left px-2 py-1">
+                          Inhalt
+                        </th>
+                        <th className="text-left px-2 py-1">
+                          Geprüft von
+                        </th>
+                        <th className="text-right px-2 py-1"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Array.from(
+                        { length: daysInMonth },
+                        (_, idx) => idx + 1
+                      ).map((day) => {
+                        const inst = instByDay.get(day);
+                        const label = formatDayLabel(
+                          day,
+                          month,
+                          year
+                        );
+
+                        return (
+                          <tr key={day} className="border-t">
+                            <td className="px-2 py-1 whitespace-nowrap">
+                              {label}
+                            </td>
+                            <td className="px-2 py-1">
+                              {inst ? (
+                                <>
+                                  <span className="mr-1">✓</span>
+                                  {inst.summary ?? "Eintrag vorhanden"}
+                                </>
+                              ) : (
+                                <span className="opacity-40">
+                                  kein Eintrag
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-2 py-1">
+                              {inst?.completedBy ?? "–"}
+                            </td>
+                            <td className="px-2 py-1 text-right">
+                              {inst && (
+                                <Link
+                                  href={`/metzgerei/instance/${inst.id}`}
+                                  className="underline"
+                                >
+                                  Öffnen
+                                </Link>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            );
+          })}
         </div>
       )}
     </main>

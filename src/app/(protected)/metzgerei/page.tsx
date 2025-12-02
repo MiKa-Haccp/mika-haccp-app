@@ -125,55 +125,6 @@ export default function MetzgereiPage() {
           <p className="text-sm opacity-70">Keine Formulare gefunden.</p>
         )}
       </section>
-
-      {/* Vorhandene Instanzen (Tabelle) */}
-      <section className="rounded-2xl border">
-        <div className="p-3 font-semibold text-sm">Vorhandene Instanzen</div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-xs">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="text-left px-3 py-2">Formular</th>
-                <th className="text-left px-3 py-2">Sichtbarkeit</th>
-                <th className="text-left px-3 py-2">Markt</th>
-                <th className="text-left px-3 py-2">Geändert</th>
-                <th className="px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className="border-t">
-                  <td className="px-3 py-1">{r.definition.label}</td>
-                  <td className="px-3 py-1">
-                    {r.definition.marketId ? "Markt" : "Global"}
-                  </td>
-                  <td className="px-3 py-1">
-                    {r.marketId ? selected?.name ?? "Ausgewählter Markt" : "Global"}
-                  </td>
-                  <td className="px-3 py-1">
-                    {new Date(r.updatedAt).toLocaleString()}
-                  </td>
-                  <td className="px-3 py-1 text-right">
-                    <Link
-                      className="rounded border px-3 py-1 text-[11px]"
-                      href={`/metzgerei/instance/${r.id}`}
-                    >
-                      Öffnen
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-              {!rows.length && !loading && (
-                <tr>
-                  <td className="px-3 py-2 opacity-70" colSpan={5}>
-                    Keine Einträge gefunden.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
     </main>
   );
 }
