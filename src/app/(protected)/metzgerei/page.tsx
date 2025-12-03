@@ -15,10 +15,32 @@ type Def = {
 
 type Inst = {
   id: string;
-  marketId: string | null;
+  periodRef: string | null;
+  status: string;
   updatedAt: string;
   definition: { label: string; marketId: string | null };
 };
+
+// ⬇️ HIER das neu einfügen:
+function getMetzgereiFormRoute(def: Def): string | null {
+  // Hier mappen wir bestimmte Definitionen auf „Spezial-Seiten“
+
+    // Wareneingang Fleisch
+  if (def.id === "FORM_METZ_WE_FLEISCH" || def.sectionKey === "we-fleisch") {
+    return "/metzgerei/we-fleisch";
+  }
+
+  // Wareneingang Obst/Gemüse
+  if (def.id === "FORM_METZ_WE_OBST" || def.sectionKey === "we-obst") {
+    return "/metzgerei/we-obst";
+  }
+
+  // Hier später: heiße Theke, Reinigungsplan Woche, Schulungsprotokoll …
+  // z.B.:
+  // if (def.id === "FORM_METZ_HEISSE_THEKE") return "/metzgerei/heisse-theke";
+
+  return null; // Default: keine Spezialseite
+}
 
 export default function MetzgereiPage() {
   const { selected } = useMarket();
@@ -53,16 +75,26 @@ export default function MetzgereiPage() {
     reload();
   }, [reload]);
 
-  async function createAndOpen(defId: string) {
+  async function createAndOpen(def: Def) {
     if (!selected?.id) {
       alert("Bitte zuerst Markt wählen");
       return;
     }
+
+    // 1) Prüfen, ob wir eine „Spezial-Seite“ für dieses Formular haben
+    const directRoute = getMetzgereiFormRoute(def);
+    if (directRoute) {
+      // Marktinfo steckt im Context, also können wir direkt dorthin springen
+      router.push(directRoute);
+      return;
+    }
+
+    // 2) Ansonsten: generischer Weg über FormInstance + FormEditor
     try {
       const res = await fetch("/api/forms/start", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ definitionId: defId, marketId: selected.id }),
+        body: JSON.stringify({ definitionId: def.id, marketId: selected.id }),
       });
       const json = await res.json();
       if (!res.ok || json?.error) {
@@ -71,7 +103,7 @@ export default function MetzgereiPage() {
       }
       router.push(`/metzgerei/instance/${json.id}`);
     } catch {
-      alert("Netzwerkfehler beim Erzeugen");
+      alert("Neuer Eintrag konnte nicht erzeugt werden.");
     }
   }
 
@@ -93,14 +125,9 @@ export default function MetzgereiPage() {
             <div className="flex gap-2">
               {/* Starten-Button nur aktiv, wenn Markt gewählt */}
               <button
+                className="rounded px-3 py-1 text-xs bg-black text-white disabled:opacity-50"
                 disabled={!selected?.id}
-                title={selected?.id ? "" : "Bitte zuerst Markt wählen"}
-                className={`rounded text-xs px-3 py-1 ${
-                  selected?.id
-                    ? "bg-black text-white"
-                    : "bg-gray-300 text-gray-600 cursor-not-allowed"
-                }`}
-                onClick={() => selected?.id && createAndOpen(d.id)}
+                onClick={() => selected?.id && createAndOpen(d)}
               >
                 Starten
               </button>

@@ -5,17 +5,27 @@ import { useEffect, useState } from "react";
 type SaveStatus = "idle" | "saving" | "ok" | "error";
 type WareType = "ambient" | "chilled" | "frozen";
 
-type WareneingangFormProps = {
-  definitionId: string;      // z.B. FORM_METZ_WE_FLEISCH
-  title: string;             // Seitentitel
-  description?: string;      // Untertitel
-  wareType: WareType;        // "ambient" | "chilled" | "frozen"
+type WareneingangLastEntry = {
+  date: string; // "YYYY-MM-DD"
+  data: {
+    wareType?: string;
+    lieferant?: string;
+    produkt?: string;
+    menge?: string;
+    temp?: string | number | null;
+    bemerkung?: string | null;
+  };
+  signatureInitials?: string | null;
 };
 
 function todayISO() {
   const d = new Date();
-  return d.toISOString().slice(0, 10); // YYYY-MM-DD
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`; // YYYY-MM-DD, lokal
 }
+
 
 export function WareneingangForm({
   definitionId,
@@ -37,6 +47,10 @@ export function WareneingangForm({
 
   const [status, setStatus] = useState<SaveStatus>("idle");
   const [msg, setMsg] = useState<string | null>(null);
+  // Letzter gespeicherter Eintrag (für diesen Monat + Markt)
+  const [lastEntry, setLastEntry] = useState<WareneingangLastEntry | null>(null);
+  const [lastEntryLoading, setLastEntryLoading] = useState(false);
+  const [lastEntryError, setLastEntryError] = useState<string | null>(null);
 
   // Markt aus localStorage holen (wie bei den anderen Formularen)
   useEffect(() => {
@@ -45,6 +59,59 @@ export function WareneingangForm({
       if (mk) setMarketId(mk);
     } catch {}
   }, []);
+
+    // Letzten Eintrag für diesen Monat + Markt laden
+  useEffect(() => {
+    if (!marketId) return;
+
+    const periodRef = date.slice(0, 7); // "YYYY-MM"
+    setLastEntryLoading(true);
+    setLastEntryError(null);
+
+    const url = `/api/forms/entries/by-month?definitionId=${encodeURIComponent(
+      definitionId
+    )}&marketId=${encodeURIComponent(marketId)}&periodRef=${encodeURIComponent(
+      periodRef
+    )}`;
+
+    fetch(url)
+      .then(async (res) => {
+        const json = await res.json();
+        if (!res.ok || !json?.ok) {
+          throw new Error(json?.error || "Fehler beim Laden der Einträge");
+        }
+
+        const entries = json.entries || [];
+        if (!entries.length) {
+          setLastEntry(null);
+          return;
+        }
+
+        const last = entries[entries.length - 1] as {
+          date: string;
+          dataJson: any;
+          signatureMeta?: { initials?: string | null } | null;
+        };
+
+        setLastEntry({
+          date: (last.date || "").slice(0, 10),
+          data: last.dataJson || {},
+          signatureInitials: last.signatureMeta?.initials ?? null,
+        });
+      })
+      .catch((err: any) => {
+        console.error("Fehler lastEntry", err);
+        setLastEntryError(
+          typeof err?.message === "string"
+            ? err.message
+            : "Fehler beim Laden des letzten Eintrags"
+        );
+        setLastEntry(null);
+      })
+      .finally(() => {
+        setLastEntryLoading(false);
+      });
+  }, [marketId, definitionId, date]);
 
   const tempRelevant = wareType === "chilled" || wareType === "frozen";
 
@@ -140,6 +207,60 @@ export function WareneingangForm({
           Typ: <span className="font-medium">{wareTypeLabel}</span>
         </p>
       </header>
+
+      {/* Letzter Eintrag ausgegraut zur Ansicht */}
+      <section className="max-w-xl rounded-2xl border bg-gray-100 text-gray-700 p-3 text-sm space-y-1">
+        <h2 className="font-semibold text-xs uppercase tracking-wide opacity-70">
+          Letzter Eintrag
+        </h2>
+
+        {lastEntryLoading && <p>Letzter Eintrag wird geladen…</p>}
+
+        {lastEntryError && (
+          <p className="text-red-600">
+            {lastEntryError}
+          </p>
+        )}
+
+        {!lastEntryLoading && !lastEntryError && !lastEntry && (
+          <p>Noch kein Eintrag vorhanden.</p>
+        )}
+
+        {!lastEntryLoading && !lastEntryError && lastEntry && (
+          <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+            <div>
+              <span className="font-medium">Datum:</span>{" "}
+              {lastEntry.date}
+            </div>
+            <div>
+              <span className="font-medium">Lieferant:</span>{" "}
+              {lastEntry.data.lieferant || "–"}
+            </div>
+            <div>
+              <span className="font-medium">Produkt:</span>{" "}
+              {lastEntry.data.produkt || "–"}
+            </div>
+            <div>
+              <span className="font-medium">Menge:</span>{" "}
+              {lastEntry.data.menge || "–"}
+            </div>
+            <div>
+              <span className="font-medium">Temperatur:</span>{" "}
+              {lastEntry.data.temp ?? "–"}
+            </div>
+            <div>
+              <span className="font-medium">Kürzel:</span>{" "}
+              {lastEntry.signatureInitials || "–"}
+            </div>
+            {lastEntry.data.bemerkung && (
+              <div className="sm:col-span-2">
+                <span className="font-medium">Bemerkung:</span>{" "}
+                {lastEntry.data.bemerkung}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {!marketId && (
         <p className="text-sm text-red-600">
